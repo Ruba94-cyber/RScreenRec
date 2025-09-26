@@ -185,7 +185,10 @@ namespace ScreenshotFlash.Avi
 
         public void Dispose()
         {
-            Close();
+            if (!isClosed)
+            {
+                Close();
+            }
         }
     }
 }

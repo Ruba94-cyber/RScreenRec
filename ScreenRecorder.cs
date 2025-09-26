@@ -14,15 +14,29 @@ namespace ScreenshotFlash
         private bool isRecording = false;
         private Rectangle bounds;
         private AviWriter writer;
+        private readonly object recordingLock = new object();
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
             bounds = screenBounds;
-            writer = new AviWriter(outputPath, bounds.Width, bounds.Height, 30); // 30 FPS
 
-            isRecording = true;
+            try
+            {
+                writer = new AviWriter(outputPath, bounds.Width, bounds.Height, 30); // 30 FPS
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to initialize AVI writer: {ex.Message}", ex);
+            }
+
+            lock (recordingLock)
+            {
+                isRecording = true;
+            }
+
             recordingThread = new Thread(RecordLoop);
             recordingThread.IsBackground = true;
+            recordingThread.Name = "ScreenRecording";
             recordingThread.Start();
         }
 
@@ -32,8 +46,13 @@ namespace ScreenshotFlash
             long frameDuration = 1000L / 30; // 30 FPS → ~33ms/frame
             long nextFrameTime = 0;
 
-            while (isRecording)
+            while (true)
             {
+                lock (recordingLock)
+                {
+                    if (!isRecording) break;
+                }
+
                 long elapsed = stopwatch.ElapsedMilliseconds;
                 if (elapsed < nextFrameTime)
                 {
@@ -59,10 +78,19 @@ namespace ScreenshotFlash
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine("Errore durante la registrazione: " + ex.Message);
+                    Console.WriteLine($"Recording error: {ex.Message}");
+
+                    // If we can't capture frames, stop recording to prevent infinite loop
+                    lock (recordingLock)
+                    {
+                        isRecording = false;
+                    }
+                    break;
                 }
             }
         }
+
+        private static readonly SolidBrush mousePointerBrush = new SolidBrush(Color.Red);
 
         private void DrawMousePointer(Graphics g)
         {
@@ -72,10 +100,13 @@ namespace ScreenshotFlash
 
             if (localX >= 0 && localX < bounds.Width && localY >= 0 && localY < bounds.Height)
             {
-                using (Brush brush = new SolidBrush(Color.Red))
-                {
-                    g.FillEllipse(brush, localX - 5, localY - 5, 10, 10);
-                }
+                float dpiScale = DpiHelper.GetSystemDpiScale();
+                int scaledSize = DpiHelper.ScaleValue(10, dpiScale);
+                int scaledOffset = scaledSize / 2;
+
+                g.FillEllipse(mousePointerBrush,
+                    localX - scaledOffset, localY - scaledOffset,
+                    scaledSize, scaledSize);
             }
         }
 
@@ -109,9 +140,17 @@ namespace ScreenshotFlash
 
         public void StopRecording()
         {
-            isRecording = false;
-            recordingThread.Join();
-            writer.Close();
+            lock (recordingLock)
+            {
+                isRecording = false;
+            }
+
+            if (recordingThread != null && recordingThread.IsAlive)
+            {
+                recordingThread.Join();
+            }
+
+            writer?.Close();
         }
     }
 }

@@ -15,10 +15,17 @@ namespace ScreenshotFlash
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
 
-            // Scegli la posizione (in basso a destra, offset 70)
-            int offsetY = 70;
-            Location = new Point(screenBounds.Right - 30, screenBounds.Bottom - offsetY);
-            Size = new Size(22, 22);
+            // DPI-aware positioning e sizing
+            float dpiScale = DpiHelper.GetSystemDpiScale();
+            int scaledOffsetY = DpiHelper.ScaleValue(70, dpiScale);
+            int scaledOffsetX = DpiHelper.ScaleValue(30, dpiScale);
+            int scaledSize = DpiHelper.ScaleValue(22, dpiScale);
+
+            Location = new Point(
+                screenBounds.Right - scaledOffsetX,
+                screenBounds.Bottom - scaledOffsetY
+            );
+            Size = new Size(scaledSize, scaledSize);
             TopMost = true;
             ShowInTaskbar = false;
             BackColor = Color.Magenta;
@@ -48,23 +55,34 @@ namespace ScreenshotFlash
             {
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
+                float dpiScale = DpiHelper.GetSystemDpiScale();
+                int scaledSize = DpiHelper.ScaleValue(20, dpiScale);
+                int scaledBorder1 = DpiHelper.ScaleValue(2, dpiScale);
+                int scaledBorder2 = DpiHelper.ScaleValue(4, dpiScale);
+
                 // Esterno nero
-                var blackRect = new Rectangle(0, 0, 20, 20);
+                var blackRect = new Rectangle(0, 0, scaledSize, scaledSize);
                 using (SolidBrush blackBrush = new SolidBrush(Color.Black))
                 {
                     e.Graphics.FillEllipse(blackBrush, blackRect);
                 }
 
                 // Intermedio bianco
-                var whiteRect = new Rectangle(2, 2, 16, 16);
+                var whiteRect = new Rectangle(
+                    scaledBorder1, scaledBorder1,
+                    scaledSize - scaledBorder1 * 2, scaledSize - scaledBorder1 * 2
+                );
                 using (SolidBrush whiteBrush = new SolidBrush(Color.White))
                 {
                     e.Graphics.FillEllipse(whiteBrush, whiteRect);
                 }
 
-                // Interno magenta (alternativo per evitare trasparenza)
-                var centerRect = new Rectangle(4, 4, 12, 12);
-                using (SolidBrush fillBrush = new SolidBrush(Color.Red)) // ← diverso da TransparencyKey
+                // Interno rosso
+                var centerRect = new Rectangle(
+                    scaledBorder2, scaledBorder2,
+                    scaledSize - scaledBorder2 * 2, scaledSize - scaledBorder2 * 2
+                );
+                using (SolidBrush fillBrush = new SolidBrush(Color.Red))
                 {
                     e.Graphics.FillEllipse(fillBrush, centerRect);
                 }

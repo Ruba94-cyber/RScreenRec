@@ -39,6 +39,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AviWriter.cs" />
+    <Compile Include="DpiHelper.cs" />
     <Compile Include="TouchOverlayForm.cs">
       <SubType>Form</SubType>
     </Compile>

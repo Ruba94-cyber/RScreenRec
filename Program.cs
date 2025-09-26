@@ -14,26 +14,71 @@ namespace ScreenshotFlash
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
+        [DllImport("shcore.dll")]
+        private static extern int SetProcessDpiAwareness(int value);
+
+        [DllImport("user32.dll")]
+        private static extern int GetDpiForWindow(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDesktopWindow();
+
+        private const int PROCESS_DPI_UNAWARE = 0;
+        private const int PROCESS_SYSTEM_DPI_AWARE = 1;
+        private const int PROCESS_PER_MONITOR_DPI_AWARE = 2;
+
         [STAThread]
         static void Main()
         {
-            // ✅ Disabilita scaling DPI per schermi speciali tipo Panasonic FG-Z2
-            SetProcessDPIAware();
+            // ✅ Configura DPI awareness moderno per multi-monitor
+            try
+            {
+                // Prova prima il metodo moderno (Windows 8.1+)
+                SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+            }
+            catch
+            {
+                // Fallback al metodo legacy (Windows Vista+)
+                SetProcessDPIAware();
+            }
 
             if (File.Exists(LockFilePath))
             {
-                try { File.Delete(LockFilePath); } catch { }
+                try
+                {
+                    File.Delete(LockFilePath);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not delete lock file: {ex.Message}");
+                }
                 return;
             }
 
-            File.WriteAllText(LockFilePath, "recording");
+            try
+            {
+                File.WriteAllText(LockFilePath, "recording");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating lock file: {ex.Message}");
+                return;
+            }
 
             // ✅ Ottiene il monitor corretto sotto al cursore
             Screen activeScreen = Screen.FromPoint(Cursor.Position);
             Rectangle bounds = activeScreen.Bounds;
 
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Captures");
-            Directory.CreateDirectory(folder);
+            try
+            {
+                Directory.CreateDirectory(folder);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating output directory: {ex.Message}");
+                return;
+            }
 
             int counter = 1;
             foreach (var f in Directory.GetFiles(folder, "rec_*.avi"))
@@ -51,7 +96,16 @@ namespace ScreenshotFlash
             string outputPath = Path.Combine(folder, $"rec_{counter}_{timestamp}.avi");
 
             var recorder = new ScreenRecorder();
-            recorder.StartRecording(bounds, outputPath);
+            try
+            {
+                recorder.StartRecording(bounds, outputPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to start recording: {ex.Message}");
+                try { File.Delete(LockFilePath); } catch { }
+                return;
+            }
 
             // Overlay pallino
             var overlay = new RecordingOverlayForm(bounds);
@@ -73,11 +127,21 @@ namespace ScreenshotFlash
 
             recorder.StopRecording();
 
-            if (overlay != null && !overlay.IsDisposed)
-                overlay.Invoke(new Action(() => overlay.Close()));
+            try
+            {
+                if (overlay != null && !overlay.IsDisposed)
+                    overlay.Invoke(new Action(() => overlay.Close()));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
 
-            if (touchOverlay != null && !touchOverlay.IsDisposed)
-                touchOverlay.Invoke(new Action(() => touchOverlay.Close()));
+            try
+            {
+                if (touchOverlay != null && !touchOverlay.IsDisposed)
+                    touchOverlay.Invoke(new Action(() => touchOverlay.Close()));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         }
     }
 }

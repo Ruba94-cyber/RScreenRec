@@ -81,7 +81,16 @@ namespace ScreenshotFlash
                     {
                         if ((ti.dwFlags & TOUCHEVENTF_DOWN) != 0)
                         {
-                            Point pt = new Point(ti.x / 100, ti.y / 100);
+                            // Convert from hundredths of pixels to pixels with DPI awareness
+                            float dpiScale = DpiHelper.GetSystemDpiScale();
+                            int x = (int)(ti.x / 100.0f / dpiScale);
+                            int y = (int)(ti.y / 100.0f / dpiScale);
+
+                            // Validate bounds
+                            x = Math.Max(0, Math.Min(Bounds.Width, x));
+                            y = Math.Max(0, Math.Min(Bounds.Height, y));
+
+                            Point pt = new Point(x, y);
                             touchPoints.Add(pt);
                         }
                     }
@@ -96,11 +105,20 @@ namespace ScreenshotFlash
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+
+            float dpiScale = DpiHelper.GetSystemDpiScale();
+            int scaledRadius = DpiHelper.ScaleValue(20, dpiScale);
+            int scaledBorderWidth = DpiHelper.ScaleValue(3, dpiScale);
+
             foreach (var pt in touchPoints)
             {
-                Rectangle r = new Rectangle(pt.X - 20, pt.Y - 20, 40, 40);
-                using (Pen border = new Pen(Color.White, 3))
-                using (Brush fill = new SolidBrush(Color.Red))  // Rosso
+                Rectangle r = new Rectangle(
+                    pt.X - scaledRadius, pt.Y - scaledRadius,
+                    scaledRadius * 2, scaledRadius * 2
+                );
+
+                using (Pen border = new Pen(Color.White, scaledBorderWidth))
+                using (Brush fill = new SolidBrush(Color.Red))
                 {
                     e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                     e.Graphics.FillEllipse(fill, r);
