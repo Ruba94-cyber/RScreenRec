@@ -1,0 +1,15 @@
+﻿bin/
+obj/
+.vs/
+*.user
+*.suo
+packages/
+*.nupkg
+*.snupkg
+TestResults/
+*.coverage
+*.coveragexml
+*.log
+Thumbs.db
+.DS_Store
+.vscode/
