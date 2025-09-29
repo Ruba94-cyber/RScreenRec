@@ -175,3 +175,18 @@ Paolo - Sviluppo e manutenzione
 ## Supporto
 
 Per bug reports e feature requests, creare issue nel repository del progetto.
+## Distribuzione su Microsoft Store
+
+Per creare il pacchetto MSIX destinato al Microsoft Store:
+
+1. Apri la soluzione `ScreenshotFlash.sln` in Visual Studio 2022.
+2. Seleziona la configurazione `Release` e la piattaforma desiderata (`x86` o `x64`).
+3. Costruisci il progetto principale per generare gli eseguibili aggiornati.
+4. Imposta `ScreenshotFlash.Package` come progetto di avvio e scegli **Publish ➜ Create App Packages...**.
+5. Segui la procedura guidata utilizzando il nome riservato nel Partner Center e genera il file `.msixupload`.
+
+Documentazione di supporto:
+- `StorePackaging/README.md`: dettagli tecnici sul progetto di packaging.
+- `Store/StorePolicies.md`: riepilogo dei requisiti di conformità.
+- `Store/PrivacyPolicy.md`: informativa sulla privacy da pubblicare nello Store.
+- `Store/StoreSubmissionGuide.txt`: guida passo-passo alla submission (prezzo 0,99).
