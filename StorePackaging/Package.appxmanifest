@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/manifest/foundation/windows10/marketing"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap mp rescap">
+  <Identity Name="12345ScreenshotFlash" Publisher="CN=YourPublisherId" Version="1.0.0.0" />
+  <Properties>
+    <DisplayName>Screenshot Flash</DisplayName>
+    <PublisherDisplayName>Your Publisher Name</PublisherDisplayName>
+    <Description>Desktop screen recording tool packaged for MSIX distribution.</Description>
+    <Logo>StoreAssets\\Square150x150Logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="it-it" />
+  </Resources>
+  <Applications>
+    <Application Id="ScreenshotFlash" Executable="ScreenshotFlash\\ScreenshotFlash.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Screenshot Flash"
+        Description="Desktop screen recording tool packaged for MSIX distribution."
+        BackgroundColor="transparent"
+        Square150x150Logo="StoreAssets\\Square150x150Logo.png"
+        Square44x44Logo="StoreAssets\\Square44x44Logo.png">
+        <uap:DefaultTile
+          Square71x71Logo="StoreAssets\\Square71x71Logo.png"
+          Wide310x150Logo="StoreAssets\\Wide310x150Logo.png"
+          Square310x310Logo="StoreAssets\\Square310x310Logo.png" />
+        <uap:SplashScreen Image="StoreAssets\\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <rescap:Extension Category="windows.fullTrustProcess" />
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
