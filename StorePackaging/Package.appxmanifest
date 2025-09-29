@@ -5,11 +5,11 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap mp rescap">
-  <Identity Name="12345ScreenshotFlash" Publisher="CN=YourPublisherId" Version="1.0.0.0" />
+  <Identity Name="RScreenRecord" Publisher="CN=Paolo" Version="1.0.0.0" />
   <Properties>
-    <DisplayName>Screenshot Flash</DisplayName>
-    <PublisherDisplayName>Your Publisher Name</PublisherDisplayName>
-    <Description>Desktop screen recording tool packaged for MSIX distribution.</Description>
+    <DisplayName>RScreenRecord</DisplayName>
+    <PublisherDisplayName>Paolo</PublisherDisplayName>
+    <Description>Professional screen recording tool for Windows. Capture your screen with high quality video recording capabilities. Perfect for tutorials, presentations, and demonstrations.</Description>
     <Logo>StoreAssets\\Square150x150Logo.png</Logo>
   </Properties>
   <Dependencies>
@@ -22,16 +22,17 @@
   <Applications>
     <Application Id="RScreenRec" Executable="ScreenshotFlash\\RScreenRec.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Screenshot Flash"
-        Description="Desktop screen recording tool packaged for MSIX distribution."
-        BackgroundColor="transparent"
+        DisplayName="RScreenRecord"
+        Description="Professional screen recording tool for Windows. Capture your screen with high quality video recording capabilities."
+        BackgroundColor="#1e1e1e"
         Square150x150Logo="StoreAssets\\Square150x150Logo.png"
         Square44x44Logo="StoreAssets\\Square44x44Logo.png">
         <uap:DefaultTile
           Square71x71Logo="StoreAssets\\Square71x71Logo.png"
           Wide310x150Logo="StoreAssets\\Wide310x150Logo.png"
-          Square310x310Logo="StoreAssets\\Square310x310Logo.png" />
-        <uap:SplashScreen Image="StoreAssets\\SplashScreen.png" />
+          Square310x310Logo="StoreAssets\\Square310x310Logo.png"
+          ShortName="RScreenRec" />
+        <uap:SplashScreen Image="StoreAssets\\SplashScreen.png" BackgroundColor="#1e1e1e" />
       </uap:VisualElements>
       <Extensions>
         <rescap:Extension Category="windows.fullTrustProcess" />
