@@ -20,7 +20,7 @@
     <Resource Language="it-it" />
   </Resources>
   <Applications>
-    <Application Id="ScreenshotFlash" Executable="ScreenshotFlash\\ScreenshotFlash.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="RScreenRec" Executable="ScreenshotFlash\\RScreenRec.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Screenshot Flash"
         Description="Desktop screen recording tool packaged for MSIX distribution."

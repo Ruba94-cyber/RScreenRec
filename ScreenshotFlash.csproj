@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <StartupObject>ScreenshotFlash.Program</StartupObject>
     <RootNamespace>ScreenshotFlash</RootNamespace>
-    <AssemblyName>ScreenshotFlash</AssemblyName>
+    <AssemblyName>RScreenRec</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <ApplicationIcon>Icon_screenshotrecord.ico</ApplicationIcon>
     <ProjectGuid>{AA56E68A-0248-B00F-0561-990CED36BC73}</ProjectGuid>
