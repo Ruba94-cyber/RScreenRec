@@ -1,140 +1,138 @@
 # RScreenRecord - Advanced Screen Recording Tool
 
-Un'applicazione C# per la registrazione avanzata dello schermo con supporto per overlay visivi e input touch.
+A C# desktop application for advanced screen recording with visual overlays and touch input support.
 
-## Caratteristiche
+## Features
 
-### 🎥 Registrazione Schermo
-- **Registrazione multi-monitor**: Rileva automaticamente il monitor sotto il cursore
-- **Alta qualità**: Registrazione a 30 FPS in formato AVI non compresso
-- **DPI Aware**: Supporto ottimizzato per schermi ad alta risoluzione (es. Panasonic FG-Z2)
-- **Gestione automatica file**: Numerazione progressiva e timestamp automatici
+### 🎥 Screen Recording
+- **Multi-monitor aware**: Automatically records the monitor under the mouse cursor.
+- **High quality capture**: 30 FPS recording using uncompressed AVI output.
+- **DPI aware**: Optimized for high-resolution displays (e.g., Panasonic FG-Z2).
+- **Automatic file management**: Sequential numbering and timestamped filenames.
 
-### 🎯 Overlay Visivi
-- **Indicatore di registrazione**: Pallino lampeggiante per indicare lo stato di registrazione attiva
-- **Cursore mouse**: Visualizzazione del cursore nelle registrazioni con punto rosso
-- **Touch overlay**: Visualizzazione degli input touch con cerchi rossi bordati
+### 🎯 Visual Overlays
+- **Recording indicator**: Blinking dot to show active recording.
+- **Mouse cursor overlay**: Highlights the cursor in recordings with a red dot.
+- **Touch overlay**: Displays touch input using red, outlined circles.
 
-### 🔧 Funzionalità Tecniche
-- **Lock file system**: Prevenzione di istanze multiple
-- **Thread-safe**: Gestione sicura dei thread per overlay e registrazione
-- **Gestione errori robusta**: Exception handling completo
-- **Ottimizzato per performance**: Ridotte allocazioni di memoria e gestione efficiente delle risorse
+### 🔧 Technical Capabilities
+- **File locking**: Prevents multiple instances from running simultaneously.
+- **Thread-safe design**: Safe coordination of overlay and recording threads.
+- **Robust error handling**: Comprehensive exception management.
+- **Performance tuned**: Minimal allocations and efficient resource usage.
 
-## Requisiti di Sistema
+## System Requirements
 
-- **OS**: Windows 7 o superiore
-- **.NET Framework**: 4.7.2 o superiore
-- **Hardware**: Supporto DirectX per acquisizione schermo
-- **Touch**: Opzionale - supporto Windows Touch per overlay touch
+- **Operating System**: Windows 7 or later
+- **.NET Framework**: 4.7.2 or later
+- **Hardware**: DirectX-compatible graphics adapter for screen capture
+- **Touch**: Optional Windows Touch support for the touch overlay
 
-## Utilizzo
+## Usage
 
-### Avvio Rapido
+### Quick Start
 ```bash
 ScreenshotFlash.exe
 ```
 
-### Funzionamento
-1. **Primo avvio**: L'applicazione rileva il monitor corrente e inizia la registrazione
-2. **Secondo avvio**: Durante una registrazione attiva, ferma la registrazione corrente
-3. **File output**: I video vengono salvati in `%USERPROFILE%\Videos\Captures\`
+### How it works
+1. **First launch**: Detects the current monitor and starts recording immediately.
+2. **Second launch**: Stops the current recording if one is running.
+3. **Output files**: Videos are saved to `%USERPROFILE%\Videos\Captures\`.
 
-### Denominazione File
-I file seguono il pattern: `rec_[numero]_[timestamp].avi`
-- **numero**: Contatore progressivo automatico
-- **timestamp**: Formato `HHhMMmSSs_dd-MM-yyyy`
+### File Naming
+Files follow the pattern `rec_[number]_[timestamp].avi`:
+- **number**: Automatically incremented counter.
+- **timestamp**: Uses the format `HHhMMmSSs_dd-MM-yyyy`.
 
-Esempio: `rec_1_14h30m45s_26-09-2025.avi`
+Example: `rec_1_14h30m45s_26-09-2025.avi`
 
-## Architettura del Codice
+## Code Architecture
 
-### Componenti Principali
+### Key Components
 
 #### `Program.cs`
-- Entry point dell'applicazione
-- Gestione lock file per istanze multiple
-- Coordinamento dei thread per overlay
-- Gestione ciclo di vita dell'applicazione
+- Application entry point.
+- Manages the lock file used to prevent multiple instances.
+- Coordinates threads used for overlays.
+- Controls the application lifecycle.
 
 #### `ScreenRecorder.cs`
-- Core engine per la cattura schermo
-- Generazione AVI con writer custom
-- Gestione thread-safe della registrazione
-- Overlay cursore mouse integrato
+- Core engine responsible for screen capture.
+- Generates AVI files through a custom writer.
+- Thread-safe management of recording loops.
+- Integrates mouse cursor overlay.
 
 #### `AviWriter.cs`
-- Writer AVI custom per output non compresso
-- Gestione header e index AVI standard
-- Ottimizzato per streaming real-time
-- Supporto RGB24 bit
+- Custom AVI writer for uncompressed output.
+- Handles standard AVI headers and indexing.
+- Optimized for real-time streaming.
+- Supports RGB 24-bit format.
 
 #### `RecordingOverlayForm.cs`
-- Overlay indicatore di registrazione
-- Finestra always-on-top trasparente
-- Animazione lampeggio personalizzabile
-- Posizionamento automatico schermo
+- Transparent overlay indicating active recording.
+- Always-on-top window with custom blinking animation.
+- Automatically positioned on the screen.
 
 #### `TouchOverlayForm.cs`
-- Cattura e visualizzazione input touch
-- Registrazione eventi Windows Touch
-- Overlay trasparente full-screen
-- Cleanup automatico degli input
+- Captures and renders touch input events.
+- Displays full-screen transparent overlay.
+- Cleans up visual touch indicators automatically.
 
-## Configurazione Avanzata
+## Advanced Configuration
 
 ### Performance Tuning
-- **FPS**: Modificabile in `ScreenRecorder.cs` linea 21
-- **Qualità**: RGB24 non compresso (modificabile in `AviWriter.cs`)
-- **Buffer size**: Calcolato automaticamente basato su risoluzione
+- **FPS**: Adjustable in `ScreenRecorder.cs` around line 21.
+- **Quality**: Uses uncompressed RGB24 video (modifiable in `AviWriter.cs`).
+- **Buffer size**: Automatically determined based on resolution.
 
-### Personalizzazione Overlay
-- **Posizione indicatore**: `RecordingOverlayForm.cs` linee 19-20
-- **Colori**: Modificabili nelle rispettive classi overlay
-- **Dimensioni**: Configurabili nei costruttori dei form
+### Overlay Customization
+- **Indicator position**: Configurable in `RecordingOverlayForm.cs` near lines 19-20.
+- **Colors**: Modify the overlay classes to adjust colors.
+- **Sizes**: Change constructor parameters to tweak overlay dimensions.
 
-## Risoluzione Problemi
+## Troubleshooting
 
-### Problemi Comuni
+### Common Issues
 
-**Registrazione non si avvia**
-- Verificare permessi cartella di output
-- Controllare spazio disco disponibile
-- Verificare che non ci siano istanze multiple attive
+**Recording does not start**
+- Verify permissions for the output folder.
+- Check available disk space.
+- Ensure no other instance is running.
 
-**Performance scadenti**
-- Chiudere applicazioni non necessarie
-- Verificare utilizzo CPU/memoria
-- Ridurre risoluzione schermo se necessario
+**Low performance**
+- Close unnecessary applications.
+- Monitor CPU and memory usage.
+- Reduce screen resolution if needed.
 
-**Overlay non visibili**
-- Verificare impostazioni DPI Windows
-- Controllare configurazione multi-monitor
-- Riavviare con permessi amministratore se necessario
+**Overlays not visible**
+- Check Windows DPI settings.
+- Review multi-monitor configuration.
+- Restart with administrator privileges if required.
 
-### File di Log
-Gli errori vengono mostrati nella console. Per debug avanzato:
+### Logging
+Errors are written to the console. For advanced debugging:
 ```bash
 ScreenshotFlash.exe > log.txt 2>&1
 ```
 
-## Sviluppo
+## Development
 
 ### Build Requirements
-- Visual Studio 2019 o superiore
+- Visual Studio 2019 or later
 - .NET Framework 4.7.2 SDK
-- Windows SDK per funzionalità touch
+- Windows SDK for touch functionality
 
-### Struttura Progetto
+### Project Structure
 ```
 RScreenRecord_VSproject/
 ├── Program.cs              # Entry point
 ├── ScreenRecorder.cs       # Core recording engine
-├── AviWriter.cs           # AVI file writer
-├── RecordingOverlayForm.cs # Recording indicator
-├── TouchOverlayForm.cs    # Touch input overlay
-├── ScreenshotFlash.csproj # Project configuration
-└── README.md              # Documentazione
+├── AviWriter.cs            # AVI file writer
+├── RecordingOverlayForm.cs # Recording indicator overlay
+├── TouchOverlayForm.cs     # Touch input overlay
+├── ScreenshotFlash.csproj  # Project configuration
+└── README.md               # Documentation
 ```
 
 ### Build Commands
@@ -149,44 +147,14 @@ dotnet build --configuration Release
 dotnet publish --configuration Release --self-contained true
 ```
 
-## Licenza
+## License
 
-Questo progetto è distribuito sotto licenza MIT. Vedere il file LICENSE per dettagli.
+This project is distributed under the MIT License. See the `LICENSE` file for details.
 
-## Contributi
+## Contributing
 
-I contributi sono benvenuti! Per contribuire:
-1. Fork del repository
-2. Creare branch feature (`git checkout -b feature/nuova-funzionalita`)
-3. Commit delle modifiche (`git commit -am 'Aggiunta nuova funzionalità'`)
-4. Push del branch (`git push origin feature/nuova-funzionalita`)
-5. Aprire Pull Request
-
-## Versioning
-
-- **v1.0**: Release iniziale
-- **v1.1**: Bug fixes e ottimizzazioni performance
-- **v1.2**: Miglioramento gestione errori e thread safety
-
-## Autore
-
-Paolo - Sviluppo e manutenzione
-
-## Supporto
-
-Per bug reports e feature requests, creare issue nel repository del progetto.
-## Distribuzione su Microsoft Store
-
-Per creare il pacchetto MSIX destinato al Microsoft Store:
-
-1. Apri la soluzione `ScreenshotFlash.sln` in Visual Studio 2022.
-2. Seleziona la configurazione `Release` e la piattaforma desiderata (`x86` o `x64`).
-3. Costruisci il progetto principale per generare gli eseguibili aggiornati.
-4. Imposta `ScreenshotFlash.Package` come progetto di avvio e scegli **Publish ➜ Create App Packages...**.
-5. Segui la procedura guidata utilizzando il nome riservato nel Partner Center e genera il file `.msixupload`.
-
-Documentazione di supporto:
-- `StorePackaging/README.md`: dettagli tecnici sul progetto di packaging.
-- `Store/StorePolicies.md`: riepilogo dei requisiti di conformità.
-- `Store/PrivacyPolicy.md`: informativa sulla privacy da pubblicare nello Store.
-- `Store/StoreSubmissionGuide.txt`: guida passo-passo alla submission (prezzo 0,99).
+Contributions are welcome! To contribute:
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/new-feature`).
+3. Commit your changes with clear messages.
+4. Open a pull request describing your changes.
