@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace ScreenshotFlash.Avi
+namespace RScreenRec.Avi
 {
     public class AviWriter : IDisposable
     {

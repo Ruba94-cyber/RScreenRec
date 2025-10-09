@@ -1,4 +1,4 @@
-# RScreenRecord - Advanced Screen Recording Tool
+# RScreenRec - Advanced Screen Recording Tool
 
 A C# desktop application for advanced screen recording with visual overlays and touch input support.
 
@@ -32,7 +32,7 @@ A C# desktop application for advanced screen recording with visual overlays and 
 
 ### Quick Start
 ```bash
-ScreenshotFlash.exe
+RScreenRec.exe
 ```
 
 ### How it works
@@ -113,7 +113,7 @@ Example: `rec_1_14h30m45s_26-09-2025.avi`
 ### Logging
 Errors are written to the console. For advanced debugging:
 ```bash
-ScreenshotFlash.exe > log.txt 2>&1
+RScreenRec.exe > log.txt 2>&1
 ```
 
 ## Development
@@ -125,26 +125,23 @@ ScreenshotFlash.exe > log.txt 2>&1
 
 ### Project Structure
 ```
-RScreenRecord_VSproject/
+RScreenRec/
 ├── Program.cs              # Entry point
 ├── ScreenRecorder.cs       # Core recording engine
 ├── AviWriter.cs            # AVI file writer
 ├── RecordingOverlayForm.cs # Recording indicator overlay
 ├── TouchOverlayForm.cs     # Touch input overlay
-├── ScreenshotFlash.csproj  # Project configuration
+├── RScreenRec.csproj       # Project configuration
 └── README.md               # Documentation
 ```
 
 ### Build Commands
 ```bash
-# Debug build
-dotnet build --configuration Debug
+# Debug build (produces RScreenRec.exe in bin\\Debug)
+msbuild RScreenRec.csproj /p:Configuration=Debug
 
-# Release build
-dotnet build --configuration Release
-
-# Publish self-contained
-dotnet publish --configuration Release --self-contained true
+# Release build (produces RScreenRec.exe in bin\\Release)
+msbuild RScreenRec.csproj /p:Configuration=Release
 ```
 
 ## License

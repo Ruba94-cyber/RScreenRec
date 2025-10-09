@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace ScreenshotFlash
+namespace RScreenRec
 {
     static class Program
     {

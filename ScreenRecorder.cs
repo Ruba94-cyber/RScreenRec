@@ -4,9 +4,9 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
-using ScreenshotFlash.Avi;
+using RScreenRec.Avi;
 
-namespace ScreenshotFlash
+namespace RScreenRec
 {
     public class ScreenRecorder
     {
