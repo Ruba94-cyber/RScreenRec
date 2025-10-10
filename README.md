@@ -24,7 +24,7 @@ A C# desktop application for advanced screen recording with visual overlays and 
 ## System Requirements
 
 - **Operating System**: Windows 7 or later
-- **.NET Framework**: 4.7.2 or later
+- **.NET Framework**: 4.8
 - **Hardware**: DirectX-compatible graphics adapter for screen capture
 - **Touch**: Optional Windows Touch support for the touch overlay
 
@@ -120,7 +120,7 @@ RScreenRec.exe > log.txt 2>&1
 
 ### Build Requirements
 - Visual Studio 2019 or later
-- .NET Framework 4.7.2 SDK
+- .NET Framework 4.8 SDK
 - Windows SDK for touch functionality
 
 ### Project Structure
@@ -146,7 +146,7 @@ msbuild RScreenRec.csproj /p:Configuration=Release
 
 ## License
 
-This project is distributed under the MIT License. See the `LICENSE` file for details.
+This project is distributed under the MIT License. © 2025 Paolo Rubagotti. See the `LICENSE` file for details.
 
 ## Contributing
 
