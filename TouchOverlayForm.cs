@@ -56,7 +56,7 @@ namespace RScreenRec
                 BringToFront();
             };
 
-            // Timer: ogni 500ms pulisce e ridisegna
+            // Timer: clear and repaint every 500 ms
             cleanupTimer = new Timer { Interval = 500 };
             cleanupTimer.Tick += (s, e) =>
             {

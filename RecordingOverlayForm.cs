@@ -15,7 +15,7 @@ namespace RScreenRec
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
 
-            // DPI-aware positioning e sizing
+            // DPI-aware positioning and sizing
             float dpiScale = DpiHelper.GetSystemDpiScale();
             int scaledOffsetY = DpiHelper.ScaleValue(70, dpiScale);
             int scaledOffsetX = DpiHelper.ScaleValue(30, dpiScale);
@@ -60,14 +60,14 @@ namespace RScreenRec
                 int scaledBorder1 = DpiHelper.ScaleValue(2, dpiScale);
                 int scaledBorder2 = DpiHelper.ScaleValue(4, dpiScale);
 
-                // Esterno nero
+                // Outer black ring
                 var blackRect = new Rectangle(0, 0, scaledSize, scaledSize);
                 using (SolidBrush blackBrush = new SolidBrush(Color.Black))
                 {
                     e.Graphics.FillEllipse(blackBrush, blackRect);
                 }
 
-                // Intermedio bianco
+                // Middle white ring
                 var whiteRect = new Rectangle(
                     scaledBorder1, scaledBorder1,
                     scaledSize - scaledBorder1 * 2, scaledSize - scaledBorder1 * 2
@@ -77,7 +77,7 @@ namespace RScreenRec
                     e.Graphics.FillEllipse(whiteBrush, whiteRect);
                 }
 
-                // Interno rosso
+                // Inner red circle
                 var centerRect = new Rectangle(
                     scaledBorder2, scaledBorder2,
                     scaledSize - scaledBorder2 * 2, scaledSize - scaledBorder2 * 2
@@ -90,7 +90,7 @@ namespace RScreenRec
         }
 
 
-        // Forziamo la finestra sempre on top
+        // Keep the window always on top
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);

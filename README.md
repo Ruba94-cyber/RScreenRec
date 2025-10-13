@@ -155,3 +155,7 @@ Contributions are welcome! To contribute:
 2. Create a feature branch (`git checkout -b feature/new-feature`).
 3. Commit your changes with clear messages.
 4. Open a pull request describing your changes.
+
+## Support
+
+If RScreenRec helps you work faster, you can buy me a coffee by sending a PayPal donation through the [direct contribution page](https://www.paypal.com/donate?business=paolo.ruba.1913%40gmail.com&no_recurring=0&item_name=Support+RScreenRec&currency_code=EUR).

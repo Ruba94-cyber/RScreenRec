@@ -30,15 +30,15 @@ namespace RScreenRec
         [STAThread]
         static void Main()
         {
-            // ✅ Configura DPI awareness moderno per multi-monitor
+            // ✅ Configure modern DPI awareness for multi-monitor setups
             try
             {
-                // Prova prima il metodo moderno (Windows 8.1+)
+                // Try the modern method first (Windows 8.1+)
                 SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
             }
             catch
             {
-                // Fallback al metodo legacy (Windows Vista+)
+                // Fall back to the legacy method (Windows Vista+)
                 SetProcessDPIAware();
             }
 
@@ -65,7 +65,7 @@ namespace RScreenRec
                 return;
             }
 
-            // ✅ Ottiene il monitor corretto sotto al cursore
+            // ✅ Get the monitor under the cursor
             Screen activeScreen = Screen.FromPoint(Cursor.Position);
             Rectangle bounds = activeScreen.Bounds;
 
@@ -107,19 +107,19 @@ namespace RScreenRec
                 return;
             }
 
-            // Overlay pallino
+            // Recording indicator overlay
             var overlay = new RecordingOverlayForm(bounds);
             Thread overlayThread = new Thread(() => Application.Run(overlay));
             overlayThread.SetApartmentState(ApartmentState.STA);
             overlayThread.Start();
 
-            // Overlay touch
+            // Touch indicator overlay
             var touchOverlay = new TouchOverlayForm(bounds);
             Thread touchThread = new Thread(() => Application.Run(touchOverlay));
             touchThread.SetApartmentState(ApartmentState.STA);
             touchThread.Start();
 
-            // Attendi la rimozione del file di lock
+            // Wait for the lock file to be removed
             while (File.Exists(LockFilePath))
             {
                 Thread.Sleep(300);

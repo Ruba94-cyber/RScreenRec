@@ -25,7 +25,7 @@ namespace RScreenRec
             }
             catch
             {
-                // Fallback usando Graphics
+                // Fallback using Graphics
                 using (Graphics g = Graphics.FromHwnd(IntPtr.Zero))
                 {
                     return g.DpiX / DEFAULT_DPI;
@@ -37,7 +37,7 @@ namespace RScreenRec
         {
             try
             {
-                // Per Windows 10+, ogni monitor può avere DPI diverso
+                // Windows 10+ can report different DPI values per monitor
                 using (Graphics g = Graphics.FromHwnd(IntPtr.Zero))
                 {
                     return g.DpiX / DEFAULT_DPI;
