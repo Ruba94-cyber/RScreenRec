@@ -120,7 +120,7 @@ namespace RScreenRec
             touchThread.Start();
 
             // Wait for the lock file to be removed
-            while (File.Exists(LockFilePath))
+            while (File.Exists(LockFilePath) && recorder.IsRecording)
             {
                 Thread.Sleep(300);
             }
@@ -129,16 +129,28 @@ namespace RScreenRec
 
             try
             {
-                if (overlay != null && !overlay.IsDisposed)
-                    overlay.Invoke(new Action(() => overlay.Close()));
+                if (File.Exists(LockFilePath))
+                {
+                    File.Delete(LockFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not clean up lock file: {ex.Message}");
+            }
+
+            try
+            {
+                if (overlay != null && overlay.IsHandleCreated && !overlay.IsDisposed)
+                    overlay.BeginInvoke(new Action(() => overlay.Close()));
             }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
 
             try
             {
-                if (touchOverlay != null && !touchOverlay.IsDisposed)
-                    touchOverlay.Invoke(new Action(() => touchOverlay.Close()));
+                if (touchOverlay != null && touchOverlay.IsHandleCreated && !touchOverlay.IsDisposed)
+                    touchOverlay.BeginInvoke(new Action(() => touchOverlay.Close()));
             }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
