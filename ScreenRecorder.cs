@@ -10,13 +10,15 @@ namespace RScreenRec
 {
     public class ScreenRecorder
     {
-        private const int FramesPerSecond = 30;
+        private const int FramesPerSecond = 24;
         private Thread recordingThread;
         private bool isRecording = false;
         private Rectangle bounds;
         private AviWriter writer;
         private byte[] frameBuffer;
         private readonly object recordingLock = new object();
+        private Stopwatch recordingStopwatch;
+        private int capturedFrames = 0;
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
@@ -32,6 +34,7 @@ namespace RScreenRec
 
                 bounds = screenBounds;
                 frameBuffer = new byte[bounds.Width * bounds.Height * 3];
+                capturedFrames = 0;
             }
 
             try
@@ -57,17 +60,18 @@ namespace RScreenRec
             recordingThread.IsBackground = true;
             recordingThread.Name = "ScreenRecording";
             recordingThread.Priority = ThreadPriority.AboveNormal;
+            recordingStopwatch = Stopwatch.StartNew();
             recordingThread.Start();
         }
 
         private void RecordLoop()
         {
-            var stopwatch = Stopwatch.StartNew();
+            var stopwatch = recordingStopwatch ?? Stopwatch.StartNew();
+            recordingStopwatch = stopwatch;
+
             long frameIntervalTicks = (long)Math.Round(Stopwatch.Frequency / (double)FramesPerSecond);
             if (frameIntervalTicks <= 0)
                 frameIntervalTicks = 1;
-            long nextFrameTicks = stopwatch.ElapsedTicks;
-            double ticksToMilliseconds = 1000.0 / Stopwatch.Frequency;
 
             float dpiScale = DpiHelper.GetSystemDpiScale();
 
@@ -76,28 +80,12 @@ namespace RScreenRec
             {
                 while (true)
                 {
+                    long frameStart = stopwatch.ElapsedTicks;
+
                     lock (recordingLock)
                     {
                         if (!isRecording) break;
                     }
-
-                    long currentTicks = stopwatch.ElapsedTicks;
-                    long remainingTicks = nextFrameTicks - currentTicks;
-                    if (remainingTicks > 0)
-                    {
-                        double remainingMs = remainingTicks * ticksToMilliseconds;
-                        if (remainingMs >= 2.0)
-                        {
-                            Thread.Sleep((int)remainingMs - 1);
-                        }
-                        else
-                        {
-                            Thread.SpinWait(50);
-                        }
-                        continue;
-                    }
-
-                    nextFrameTicks = currentTicks + frameIntervalTicks;
 
                     try
                     {
@@ -105,6 +93,7 @@ namespace RScreenRec
                         DrawMousePointer(g, dpiScale);
 
                         writer.WriteFrame(BitmapToRgbBytes(bmp));
+                        capturedFrames++;
                     }
                     catch (Exception ex)
                     {
@@ -118,13 +107,24 @@ namespace RScreenRec
                         break;
                     }
 
-                    long postFrameTicks = stopwatch.ElapsedTicks;
-                    while (nextFrameTicks < postFrameTicks)
+                    long elapsedTicks = stopwatch.ElapsedTicks - frameStart;
+                    long remainingTicks = frameIntervalTicks - elapsedTicks;
+                    if (remainingTicks > 0)
                     {
-                        nextFrameTicks += frameIntervalTicks;
+                        int sleepMs = (int)(remainingTicks * 1000 / Stopwatch.Frequency);
+                        if (sleepMs > 0)
+                        {
+                            Thread.Sleep(sleepMs);
+                        }
+                        else
+                        {
+                            Thread.SpinWait(100);
+                        }
                     }
                 }
             }
+
+            recordingStopwatch?.Stop();
 
             lock (recordingLock)
             {
@@ -204,7 +204,10 @@ namespace RScreenRec
                 recordingThread = null;
             }
 
-            writer?.Close();
+            TimeSpan duration = recordingStopwatch?.Elapsed ?? TimeSpan.Zero;
+            recordingStopwatch = null;
+
+            writer?.Close(duration);
             writer = null;
             frameBuffer = null;
         }

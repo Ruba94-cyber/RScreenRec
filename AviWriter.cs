@@ -11,6 +11,12 @@ namespace RScreenRec.Avi
         private readonly int width;
         private readonly int height;
         private readonly int fps;
+        private readonly int bytesPerFrame;
+        private readonly uint maxBytesPerSecond;
+        private long avihMicroSecPerFramePos;
+        private long avihMaxBytesPerSecPos;
+        private long strhScalePos;
+        private long strhRatePos;
         private readonly List<long> frameOffsets = new List<long>();
         private readonly List<int> frameSizes = new List<int>();
         private long moviStartPos;
@@ -19,8 +25,6 @@ namespace RScreenRec.Avi
         private long totalFramesPos;
         private long streamLengthPos;
         private bool isClosed = false;
-        private readonly int bytesPerFrame;
-        private readonly uint maxBytesPerSecond;
 
         public AviWriter(string path, int width, int height, int fps = 30)
         {
@@ -49,7 +53,9 @@ namespace RScreenRec.Avi
             {
                 WriteChunk("avih", () =>
                 {
+                    avihMicroSecPerFramePos = writer.BaseStream.Position;
                     writer.Write((uint)(1000000 / fps)); // Microseconds per frame
+                    avihMaxBytesPerSecPos = writer.BaseStream.Position;
                     writer.Write(maxBytesPerSecond); // MaxBytesPerSec (approx.)
                     writer.Write(0); // PaddingGranularity
                     writer.Write(0x10); // Flags: HAS_INDEX
@@ -73,7 +79,9 @@ namespace RScreenRec.Avi
                         writer.Write(0); // Flags
                         writer.Write((ushort)0); writer.Write((ushort)0); // Priority, Language
                         writer.Write(0); // InitialFrames
+                        strhScalePos = writer.BaseStream.Position;
                         writer.Write(1); // Scale
+                        strhRatePos = writer.BaseStream.Position;
                         writer.Write(fps); // Rate
                         writer.Write(0); // Start
                         streamLengthPos = writer.BaseStream.Position;
@@ -132,10 +140,22 @@ namespace RScreenRec.Avi
             frameSizes.Add(frameData.Length);
         }
 
-        public void Close()
+        public void Close(TimeSpan? actualDuration = null)
         {
             if (isClosed) return;
             isClosed = true;
+
+            if (frameOffsets.Count > 0)
+            {
+                double effectiveFps = fps;
+                if (actualDuration.HasValue && actualDuration.Value.TotalSeconds > 0.001)
+                {
+                    effectiveFps = frameOffsets.Count / actualDuration.Value.TotalSeconds;
+                    // Clamp to sensible bounds to avoid corrupt headers on very short recordings
+                    effectiveFps = Math.Max(1, Math.Min(120, effectiveFps));
+                }
+                UpdateTimingHeaders(effectiveFps);
+            }
 
             long moviEnd = writer.BaseStream.Position;
             long moviSize = moviEnd - moviStartPos - 4;
@@ -169,6 +189,32 @@ namespace RScreenRec.Avi
             writer.Write((int)(fileEnd - 8));
 
             writer.Close();
+        }
+
+        private void UpdateTimingHeaders(double effectiveFps)
+        {
+            uint microSecPerFrame = (uint)Math.Max(1, Math.Min(1_000_000, Math.Round(1_000_000.0 / effectiveFps)));
+            uint bytesPerSec = (uint)Math.Min((long)Math.Round(bytesPerFrame * effectiveFps), uint.MaxValue);
+
+            // Use a larger scale to preserve fractional fps if necessary
+            const int timeScale = 1000; // 1/timeScale seconds per unit
+            int rate = (int)Math.Max(1, Math.Round(effectiveFps * timeScale));
+
+            long currentPos = writer.BaseStream.Position;
+
+            writer.BaseStream.Seek(avihMicroSecPerFramePos, SeekOrigin.Begin);
+            writer.Write(microSecPerFrame);
+
+            writer.BaseStream.Seek(avihMaxBytesPerSecPos, SeekOrigin.Begin);
+            writer.Write(bytesPerSec);
+
+            writer.BaseStream.Seek(strhScalePos, SeekOrigin.Begin);
+            writer.Write(timeScale);
+
+            writer.BaseStream.Seek(strhRatePos, SeekOrigin.Begin);
+            writer.Write(rate);
+
+            writer.BaseStream.Seek(currentPos, SeekOrigin.Begin);
         }
 
         private void WriteList(string fourCC, Action inner)
