@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using RScreenRec.Avi;
@@ -11,6 +12,9 @@ namespace RScreenRec
     public class ScreenRecorder
     {
         private const int FramesPerSecond = 24;
+        private static readonly bool UseMjpegCompression = false;
+        private const int JpegQuality = 80;
+        private const long AviSizeLimitBytes = AviWriter.MaxUsableFileSizeBytes;
         private Thread recordingThread;
         private bool isRecording = false;
         private Rectangle bounds;
@@ -18,7 +22,15 @@ namespace RScreenRec
         private byte[] frameBuffer;
         private readonly object recordingLock = new object();
         private Stopwatch recordingStopwatch;
+        private Stopwatch segmentStopwatch;
         private int capturedFrames = 0;
+        private string baseOutputPath;
+        private int segmentIndex = 1;
+        private bool mjpegEnabled = UseMjpegCompression;
+        private MemoryStream jpegStream;
+        private byte[] jpegBuffer = Array.Empty<byte>();
+        private ImageCodecInfo jpegCodec;
+        private EncoderParameters jpegEncoderParams;
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
@@ -35,11 +47,16 @@ namespace RScreenRec
                 bounds = screenBounds;
                 frameBuffer = new byte[bounds.Width * bounds.Height * 3];
                 capturedFrames = 0;
+                baseOutputPath = outputPath;
+                segmentIndex = 1;
+                mjpegEnabled = UseMjpegCompression;
             }
 
             try
             {
-                writer = new AviWriter(outputPath, bounds.Width, bounds.Height, FramesPerSecond);
+                writer = CreateWriter(outputPath);
+                segmentStopwatch = Stopwatch.StartNew();
+                Logger.Log($"Recording started. Output: {outputPath}, Bounds: {bounds.Width}x{bounds.Height}, MJPEG: {mjpegEnabled}");
             }
             catch (Exception ex)
             {
@@ -68,6 +85,7 @@ namespace RScreenRec
         {
             var stopwatch = recordingStopwatch ?? Stopwatch.StartNew();
             recordingStopwatch = stopwatch;
+            segmentStopwatch = segmentStopwatch ?? Stopwatch.StartNew();
 
             long frameIntervalTicks = (long)Math.Round(Stopwatch.Frequency / (double)FramesPerSecond);
             if (frameIntervalTicks <= 0)
@@ -92,12 +110,17 @@ namespace RScreenRec
                         g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                         DrawMousePointer(g, dpiScale);
 
-                        writer.WriteFrame(BitmapToRgbBytes(bmp));
+                        byte[] frameData = GetFrameBytes(bmp, out int frameLength);
+                        if (writer.WouldExceedLimit(frameLength, AviSizeLimitBytes))
+                        {
+                            RotateWriter();
+                        }
+                        writer.WriteFrame(frameData, frameLength);
                         capturedFrames++;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Recording error: {ex.Message}");
+                        Logger.Log("Recording error", ex);
 
                         // If we can't capture frames, stop recording to prevent infinite loop
                         lock (recordingLock)
@@ -125,11 +148,13 @@ namespace RScreenRec
             }
 
             recordingStopwatch?.Stop();
+            segmentStopwatch?.Stop();
 
             lock (recordingLock)
             {
                 isRecording = false;
             }
+            Logger.Log($"Recording loop stopped. CapturedFrames={capturedFrames}");
         }
 
         private static readonly SolidBrush mousePointerBrush = new SolidBrush(Color.Red);
@@ -191,6 +216,58 @@ namespace RScreenRec
             return frameBuffer;
         }
 
+        private byte[] GetFrameBytes(Bitmap bmp, out int length)
+        {
+            byte[] buffer = BitmapToRgbBytes(bmp);
+            length = buffer.Length;
+            return buffer;
+        }
+
+        private byte[] BitmapToJpegBytes(Bitmap bmp, out int length)
+        {
+            if (jpegCodec == null)
+            {
+                foreach (var codec in ImageCodecInfo.GetImageEncoders())
+                {
+                    if (codec.FormatID == ImageFormat.Jpeg.Guid)
+                    {
+                        jpegCodec = codec;
+                        break;
+                    }
+                }
+                if (jpegCodec == null)
+                {
+                    throw new InvalidOperationException("JPEG encoder not found.");
+                }
+            }
+
+            if (jpegEncoderParams == null)
+            {
+                jpegEncoderParams = new EncoderParameters(1);
+                jpegEncoderParams.Param[0] = new EncoderParameter(Encoder.Quality, JpegQuality);
+            }
+
+            if (jpegStream == null)
+            {
+                jpegStream = new MemoryStream(bounds.Width * bounds.Height);
+            }
+            else
+            {
+                jpegStream.Position = 0;
+                jpegStream.SetLength(0);
+            }
+
+            bmp.Save(jpegStream, jpegCodec, jpegEncoderParams);
+            length = (int)jpegStream.Position;
+
+            if (jpegBuffer == null || jpegBuffer.Length < length)
+            {
+                jpegBuffer = new byte[length];
+            }
+            Array.Copy(jpegStream.GetBuffer(), jpegBuffer, length);
+            return jpegBuffer;
+        }
+
         public void StopRecording()
         {
             lock (recordingLock)
@@ -207,9 +284,58 @@ namespace RScreenRec
             TimeSpan duration = recordingStopwatch?.Elapsed ?? TimeSpan.Zero;
             recordingStopwatch = null;
 
-            writer?.Close(duration);
+            TimeSpan segmentDuration = segmentStopwatch?.Elapsed ?? duration;
+            segmentStopwatch = null;
+
+            writer?.Close(segmentDuration);
             writer = null;
             frameBuffer = null;
+            DisposeEncodingResources();
+            Logger.Log($"Recording stopped. Duration={segmentDuration}, Frames={capturedFrames}, OutputBase={baseOutputPath}");
+        }
+
+        private AviWriter CreateWriter(string path)
+        {
+            var codec = UseMjpegCompression ? AviWriter.VideoCodec.Mjpeg : AviWriter.VideoCodec.Rgb24;
+            return new AviWriter(path, bounds.Width, bounds.Height, FramesPerSecond, codec);
+        }
+
+        private void RotateWriter()
+        {
+            TimeSpan elapsed = segmentStopwatch?.Elapsed ?? TimeSpan.Zero;
+            writer?.Close(elapsed);
+            segmentStopwatch?.Restart();
+
+            segmentIndex++;
+            string nextPath = GetSegmentPath(segmentIndex);
+            writer = CreateWriter(nextPath);
+        }
+
+        private string GetSegmentPath(int index)
+        {
+            if (index <= 1 || string.IsNullOrEmpty(baseOutputPath))
+                return baseOutputPath;
+
+            string directory = Path.GetDirectoryName(baseOutputPath) ?? string.Empty;
+            string name = Path.GetFileNameWithoutExtension(baseOutputPath);
+            string extension = Path.GetExtension(baseOutputPath);
+
+            return Path.Combine(directory, $"{name}_part{index:D2}{extension}");
+        }
+
+        private void DisposeEncodingResources()
+        {
+            jpegStream?.Dispose();
+            jpegStream = null;
+
+            if (jpegEncoderParams != null)
+            {
+                jpegEncoderParams.Dispose();
+                jpegEncoderParams = null;
+            }
+
+            jpegCodec = null;
+            jpegBuffer = Array.Empty<byte>();
         }
 
         public bool IsRecording

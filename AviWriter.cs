@@ -2,21 +2,38 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using RScreenRec;
 
 namespace RScreenRec.Avi
 {
     public class AviWriter : IDisposable
     {
+        public enum VideoCodec
+        {
+            Rgb24,
+            Mjpeg
+        }
+
+        public const long MaxUsableFileSizeBytes = (4L * 1024 * 1024 * 1024) - (512 * 1024); // keep under the AVI 4 GB boundary
+
         private readonly BinaryWriter writer;
         private readonly int width;
         private readonly int height;
         private readonly int fps;
-        private readonly int bytesPerFrame;
-        private readonly uint maxBytesPerSecond;
+        private readonly VideoCodec codec;
+        private readonly string frameChunkFourCC;
+        private readonly string streamHandlerFourCC;
+        private readonly int compressionFourCC;
+        private readonly int rawFrameSize;
+        private int maxFrameSize;
+        private long totalFrameBytes;
         private long avihMicroSecPerFramePos;
         private long avihMaxBytesPerSecPos;
+        private long avihBufferSizePos;
         private long strhScalePos;
         private long strhRatePos;
+        private long strhBufferSizePos;
+        private long strfSizeImagePos;
         private readonly List<long> frameOffsets = new List<long>();
         private readonly List<int> frameSizes = new List<int>();
         private long moviStartPos;
@@ -26,23 +43,28 @@ namespace RScreenRec.Avi
         private long streamLengthPos;
         private bool isClosed = false;
 
-        public AviWriter(string path, int width, int height, int fps = 30)
+        public AviWriter(string path, int width, int height, int fps = 30, VideoCodec codec = VideoCodec.Rgb24)
         {
             this.width = width;
             this.height = height;
             this.fps = fps;
-            bytesPerFrame = width * height * 3;
-            long theoreticalBytesPerSecond = (long)bytesPerFrame * fps;
-            maxBytesPerSecond = theoreticalBytesPerSecond > uint.MaxValue
-                ? uint.MaxValue
-                : (uint)theoreticalBytesPerSecond;
+            this.codec = codec;
+            frameChunkFourCC = codec == VideoCodec.Mjpeg ? "00dc" : "00db";
+            streamHandlerFourCC = codec == VideoCodec.Mjpeg ? "MJPG" : "DIB ";
+            compressionFourCC = codec == VideoCodec.Mjpeg ? 0x47504A4D : 0; // 'MJPG'
+            rawFrameSize = width * height * 3;
+            maxFrameSize = rawFrameSize;
+            totalFrameBytes = 0;
 
             writer = new BinaryWriter(File.Create(path));
             WriteHeaders();
+            Logger.Log($"AVI init: moviStartPos={moviStartPos}, moviDataStartPos={moviDataStartPos}, pos={writer.BaseStream.Position}, codec={codec}, size={width}x{height}");
         }
 
         private void WriteHeaders()
         {
+            uint initialBytesPerSecond = (uint)Math.Min((long)rawFrameSize * fps, uint.MaxValue);
+
             writer.Write(Encoding.ASCII.GetBytes("RIFF"));
             riffSizePos = writer.BaseStream.Position;
             writer.Write(0); // Placeholder for RIFF chunk size
@@ -56,14 +78,15 @@ namespace RScreenRec.Avi
                     avihMicroSecPerFramePos = writer.BaseStream.Position;
                     writer.Write((uint)(1000000 / fps)); // Microseconds per frame
                     avihMaxBytesPerSecPos = writer.BaseStream.Position;
-                    writer.Write(maxBytesPerSecond); // MaxBytesPerSec (approx.)
+                    writer.Write(initialBytesPerSecond); // MaxBytesPerSec (approx.)
                     writer.Write(0); // PaddingGranularity
                     writer.Write(0x10); // Flags: HAS_INDEX
                     totalFramesPos = writer.BaseStream.Position;
                     writer.Write(0); // TotalFrames (to be updated)
                     writer.Write(0); // InitialFrames
                     writer.Write(1); // Streams
-                    writer.Write((uint)bytesPerFrame); // SuggestedBufferSize
+                    avihBufferSizePos = writer.BaseStream.Position;
+                    writer.Write((uint)maxFrameSize); // SuggestedBufferSize (updated on close)
                     writer.Write(width);
                     writer.Write(height);
                     writer.Write(new byte[16]); // Reserved
@@ -75,7 +98,7 @@ namespace RScreenRec.Avi
                     WriteChunk("strh", () =>
                     {
                         writer.Write(Encoding.ASCII.GetBytes("vids")); // fccType
-                        writer.Write(Encoding.ASCII.GetBytes("DIB ")); // fccHandler (raw RGB)
+                        writer.Write(Encoding.ASCII.GetBytes(streamHandlerFourCC)); // fccHandler
                         writer.Write(0); // Flags
                         writer.Write((ushort)0); writer.Write((ushort)0); // Priority, Language
                         writer.Write(0); // InitialFrames
@@ -86,7 +109,8 @@ namespace RScreenRec.Avi
                         writer.Write(0); // Start
                         streamLengthPos = writer.BaseStream.Position;
                         writer.Write(0); // Length (to be updated)
-                        writer.Write((uint)bytesPerFrame); // SuggestedBufferSize
+                        strhBufferSizePos = writer.BaseStream.Position;
+                        writer.Write((uint)maxFrameSize); // SuggestedBufferSize (updated on close)
                         writer.Write(uint.MaxValue); // Quality
                         writer.Write(0); // SampleSize
                         writer.Write((short)0); writer.Write((short)0); // left, top
@@ -100,8 +124,9 @@ namespace RScreenRec.Avi
                         writer.Write(height);
                         writer.Write((ushort)1); // Planes
                         writer.Write((ushort)24); // BitCount
-                        writer.Write(0); // Compression = BI_RGB
-                        writer.Write((uint)bytesPerFrame); // SizeImage
+                        writer.Write(compressionFourCC); // Compression
+                        strfSizeImagePos = writer.BaseStream.Position;
+                        writer.Write(codec == VideoCodec.Mjpeg ? 0u : (uint)rawFrameSize); // SizeImage
                         writer.Write(0); // XPelsPerMeter
                         writer.Write(0); // YPelsPerMeter
                         writer.Write(0); // ClrUsed
@@ -120,24 +145,46 @@ namespace RScreenRec.Avi
 
         public void WriteFrame(byte[] frameData)
         {
+            WriteFrame(frameData, frameData?.Length ?? 0);
+        }
+
+        public void WriteFrame(byte[] frameData, int length)
+        {
             if (isClosed)
                 throw new InvalidOperationException("Cannot write frames after the AVI writer has been closed.");
             if (frameData == null)
                 throw new ArgumentNullException(nameof(frameData));
-            if (frameData.Length != bytesPerFrame)
-                throw new ArgumentException($"Frame data must be exactly {bytesPerFrame} bytes for {width}x{height} 24bpp frames.", nameof(frameData));
+            if (length <= 0 || length > frameData.Length)
+                throw new ArgumentOutOfRangeException(nameof(length), "Frame length must reference valid data.");
+            if (codec == VideoCodec.Rgb24 && length != rawFrameSize)
+                throw new ArgumentException($"Frame data must be exactly {rawFrameSize} bytes for {width}x{height} 24bpp frames.", nameof(frameData));
 
             long chunkStart = writer.BaseStream.Position;
 
-            writer.Write(Encoding.ASCII.GetBytes("00db")); // uncompressed frame
-            writer.Write(frameData.Length);
-            writer.Write(frameData);
+            writer.Write(Encoding.ASCII.GetBytes(frameChunkFourCC)); // frame chunk
+            writer.Write(length);
+            writer.BaseStream.Write(frameData, 0, length);
 
-            if (frameData.Length % 2 != 0)
+            if (length % 2 != 0)
                 writer.Write((byte)0); // padding
 
             frameOffsets.Add(chunkStart - moviDataStartPos);
-            frameSizes.Add(frameData.Length);
+            frameSizes.Add(length);
+            maxFrameSize = Math.Max(maxFrameSize, length);
+            totalFrameBytes += length + (length % 2);
+        }
+
+        public bool WouldExceedLimit(int nextFrameSize, long maxFileSize = MaxUsableFileSizeBytes)
+        {
+            if (maxFileSize <= 0)
+                return false;
+
+            long padding = (nextFrameSize % 2);
+            long nextChunkBytes = 8 + nextFrameSize + padding;
+            long futureIndexBytes = 8 + ((frameOffsets.Count + 1) * 16);
+            long projected = writer.BaseStream.Position + nextChunkBytes + futureIndexBytes;
+
+            return projected >= maxFileSize;
         }
 
         public void Close(TimeSpan? actualDuration = null)
@@ -154,11 +201,21 @@ namespace RScreenRec.Avi
                     // Clamp to sensible bounds to avoid corrupt headers on very short recordings
                     effectiveFps = Math.Max(1, Math.Min(120, effectiveFps));
                 }
-                UpdateTimingHeaders(effectiveFps);
+                long endPos = writer.BaseStream.Position;
+                UpdateTimingHeaders(effectiveFps, actualDuration);
+                uint suggestedBuffer = (uint)Math.Min(Math.Max(maxFrameSize, rawFrameSize), uint.MaxValue);
+                UpdateBufferSizes(suggestedBuffer);
+                writer.BaseStream.Seek(endPos, SeekOrigin.Begin);
+            }
+            else
+            {
+                Logger.Log("AVI close called with zero frames written.");
             }
 
             long moviEnd = writer.BaseStream.Position;
+            // LIST size is the number of bytes that follow the size field
             long moviSize = moviEnd - moviStartPos - 4;
+            Logger.Log($"AVI close: moviStartPos={moviStartPos}, moviDataStartPos={moviDataStartPos}, moviEnd={moviEnd}, moviSize={moviSize}, frames={frameOffsets.Count}");
 
             // Update movi size
             writer.BaseStream.Seek(moviStartPos, SeekOrigin.Begin);
@@ -171,11 +228,12 @@ namespace RScreenRec.Avi
             for (int i = 0; i < frameOffsets.Count; i++)
             {
                 var offset = frameOffsets[i];
-                writer.Write(Encoding.ASCII.GetBytes("00db"));
+                writer.Write(Encoding.ASCII.GetBytes(frameChunkFourCC));
                 writer.Write(0x10); // key frame flag
                 writer.Write((int)offset); // relative offset from start of movi data
                 writer.Write(frameSizes[i]);
             }
+            Logger.Log($"AVI idx1 written at {writer.BaseStream.Position}, entries={frameOffsets.Count}");
 
             // Update frame counts in header
             writer.BaseStream.Seek(totalFramesPos, SeekOrigin.Begin);
@@ -188,13 +246,22 @@ namespace RScreenRec.Avi
             writer.BaseStream.Seek(riffSizePos, SeekOrigin.Begin);
             writer.Write((int)(fileEnd - 8));
 
+            writer.Flush();
             writer.Close();
         }
 
-        private void UpdateTimingHeaders(double effectiveFps)
+        private void UpdateTimingHeaders(double effectiveFps, TimeSpan? actualDuration)
         {
             uint microSecPerFrame = (uint)Math.Max(1, Math.Min(1_000_000, Math.Round(1_000_000.0 / effectiveFps)));
-            uint bytesPerSec = (uint)Math.Min((long)Math.Round(bytesPerFrame * effectiveFps), uint.MaxValue);
+            uint bytesPerSec;
+            if (actualDuration.HasValue && actualDuration.Value.TotalSeconds > 0.001)
+            {
+                bytesPerSec = (uint)Math.Min((long)Math.Round(totalFrameBytes / actualDuration.Value.TotalSeconds), uint.MaxValue);
+            }
+            else
+            {
+                bytesPerSec = (uint)Math.Min((long)Math.Round(maxFrameSize * effectiveFps), uint.MaxValue);
+            }
 
             // Use a larger scale to preserve fractional fps if necessary
             const int timeScale = 1000; // 1/timeScale seconds per unit
@@ -213,6 +280,22 @@ namespace RScreenRec.Avi
 
             writer.BaseStream.Seek(strhRatePos, SeekOrigin.Begin);
             writer.Write(rate);
+
+            writer.BaseStream.Seek(currentPos, SeekOrigin.Begin);
+        }
+
+        private void UpdateBufferSizes(uint bufferSize)
+        {
+            long currentPos = writer.BaseStream.Position;
+
+            writer.BaseStream.Seek(avihBufferSizePos, SeekOrigin.Begin);
+            writer.Write(bufferSize);
+
+            writer.BaseStream.Seek(strhBufferSizePos, SeekOrigin.Begin);
+            writer.Write(bufferSize);
+
+            writer.BaseStream.Seek(strfSizeImagePos, SeekOrigin.Begin);
+            writer.Write(bufferSize);
 
             writer.BaseStream.Seek(currentPos, SeekOrigin.Begin);
         }
