@@ -58,12 +58,15 @@ namespace RScreenRec.Avi
 
             writer = new BinaryWriter(File.Create(path));
             WriteHeaders();
-            Logger.Log($"AVI init: moviStartPos={moviStartPos}, moviDataStartPos={moviDataStartPos}, pos={writer.BaseStream.Position}, codec={codec}, size={width}x{height}");
+            Logger.Log(string.Format("AVI init: moviStartPos={0}, moviDataStartPos={1}, pos={2}, codec={3}, size={4}x{5}",
+                moviStartPos, moviDataStartPos, writer.BaseStream.Position, codec, width, height));
         }
 
         private void WriteHeaders()
         {
-            uint initialBytesPerSecond = (uint)Math.Min((long)rawFrameSize * fps, uint.MaxValue);
+            // REMOVED: 2x speed compensation - the issue was elsewhere
+            int adjustedFps = fps; // Use actual FPS without division
+            uint initialBytesPerSecond = (uint)Math.Min((long)rawFrameSize * adjustedFps, uint.MaxValue);
 
             writer.Write(Encoding.ASCII.GetBytes("RIFF"));
             riffSizePos = writer.BaseStream.Position;
@@ -76,7 +79,7 @@ namespace RScreenRec.Avi
                 WriteChunk("avih", () =>
                 {
                     avihMicroSecPerFramePos = writer.BaseStream.Position;
-                    writer.Write((uint)(1000000 / fps)); // Microseconds per frame
+                    writer.Write((uint)(1000000 / adjustedFps)); // Microseconds per frame
                     avihMaxBytesPerSecPos = writer.BaseStream.Position;
                     writer.Write(initialBytesPerSecond); // MaxBytesPerSec (approx.)
                     writer.Write(0); // PaddingGranularity
@@ -105,7 +108,7 @@ namespace RScreenRec.Avi
                         strhScalePos = writer.BaseStream.Position;
                         writer.Write(1); // Scale
                         strhRatePos = writer.BaseStream.Position;
-                        writer.Write(fps); // Rate
+                        writer.Write(adjustedFps); // Rate (actual FPS)
                         writer.Write(0); // Start
                         streamLengthPos = writer.BaseStream.Position;
                         writer.Write(0); // Length (to be updated)
@@ -145,7 +148,7 @@ namespace RScreenRec.Avi
 
         public void WriteFrame(byte[] frameData)
         {
-            WriteFrame(frameData, frameData?.Length ?? 0);
+            WriteFrame(frameData, frameData != null ? frameData.Length : 0);
         }
 
         public void WriteFrame(byte[] frameData, int length)
@@ -153,11 +156,11 @@ namespace RScreenRec.Avi
             if (isClosed)
                 throw new InvalidOperationException("Cannot write frames after the AVI writer has been closed.");
             if (frameData == null)
-                throw new ArgumentNullException(nameof(frameData));
+                throw new ArgumentNullException("frameData");
             if (length <= 0 || length > frameData.Length)
-                throw new ArgumentOutOfRangeException(nameof(length), "Frame length must reference valid data.");
+                throw new ArgumentOutOfRangeException("length", "Frame length must reference valid data.");
             if (codec == VideoCodec.Rgb24 && length != rawFrameSize)
-                throw new ArgumentException($"Frame data must be exactly {rawFrameSize} bytes for {width}x{height} 24bpp frames.", nameof(frameData));
+                throw new ArgumentException(string.Format("Frame data must be exactly {0} bytes for {1}x{2} 24bpp frames.", rawFrameSize, width, height), "frameData");
 
             long chunkStart = writer.BaseStream.Position;
 
@@ -198,8 +201,14 @@ namespace RScreenRec.Avi
                 if (actualDuration.HasValue && actualDuration.Value.TotalSeconds > 0.001)
                 {
                     effectiveFps = frameOffsets.Count / actualDuration.Value.TotalSeconds;
+                    Logger.Log(string.Format("AVI Close: frameCount={0}, actualDuration={1:F3}s, calculatedFps={2:F2}", frameOffsets.Count, actualDuration.Value.TotalSeconds, effectiveFps));
                     // Clamp to sensible bounds to avoid corrupt headers on very short recordings
                     effectiveFps = Math.Max(1, Math.Min(120, effectiveFps));
+                    Logger.Log(string.Format("AVI Close: effectiveFps (clamped)={0:F2}", effectiveFps));
+                }
+                else
+                {
+                    Logger.Log(string.Format("AVI Close: Using default fps={0}", fps));
                 }
                 long endPos = writer.BaseStream.Position;
                 UpdateTimingHeaders(effectiveFps, actualDuration);
@@ -215,7 +224,8 @@ namespace RScreenRec.Avi
             long moviEnd = writer.BaseStream.Position;
             // LIST size is the number of bytes that follow the size field
             long moviSize = moviEnd - moviStartPos - 4;
-            Logger.Log($"AVI close: moviStartPos={moviStartPos}, moviDataStartPos={moviDataStartPos}, moviEnd={moviEnd}, moviSize={moviSize}, frames={frameOffsets.Count}");
+            Logger.Log(string.Format("AVI close: moviStartPos={0}, moviDataStartPos={1}, moviEnd={2}, moviSize={3}, frames={4}",
+                moviStartPos, moviDataStartPos, moviEnd, moviSize, frameOffsets.Count));
 
             // Update movi size
             writer.BaseStream.Seek(moviStartPos, SeekOrigin.Begin);
@@ -233,7 +243,7 @@ namespace RScreenRec.Avi
                 writer.Write((int)offset); // relative offset from start of movi data
                 writer.Write(frameSizes[i]);
             }
-            Logger.Log($"AVI idx1 written at {writer.BaseStream.Position}, entries={frameOffsets.Count}");
+            Logger.Log(string.Format("AVI idx1 written at {0}, entries={1}", writer.BaseStream.Position, frameOffsets.Count));
 
             // Update frame counts in header
             writer.BaseStream.Seek(totalFramesPos, SeekOrigin.Begin);
@@ -252,7 +262,10 @@ namespace RScreenRec.Avi
 
         private void UpdateTimingHeaders(double effectiveFps, TimeSpan? actualDuration)
         {
-            uint microSecPerFrame = (uint)Math.Max(1, Math.Min(1_000_000, Math.Round(1_000_000.0 / effectiveFps)));
+            // REMOVED: 2x speed compensation - use actual effective FPS
+            // effectiveFps = Math.Max(1, effectiveFps / 2);
+            
+            uint microSecPerFrame = (uint)Math.Max(1, Math.Min(1000000, Math.Round(1000000.0 / effectiveFps)));
             uint bytesPerSec;
             if (actualDuration.HasValue && actualDuration.Value.TotalSeconds > 0.001)
             {
@@ -260,7 +273,7 @@ namespace RScreenRec.Avi
             }
             else
             {
-                bytesPerSec = (uint)Math.Min((long)Math.Round(maxFrameSize * effectiveFps), uint.MaxValue);
+                bytesPerSec = (uint)Math.Min((long)Math.Round(rawFrameSize * effectiveFps), uint.MaxValue);
             }
 
             // Use a larger scale to preserve fractional fps if necessary

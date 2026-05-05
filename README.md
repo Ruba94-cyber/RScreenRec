@@ -6,7 +6,7 @@ A C# desktop application for advanced screen recording with visual overlays and 
 
 ### 🎥 Screen Recording
 - **Multi-monitor aware**: Automatically records the monitor under the mouse cursor.
-- **High quality capture**: 30 FPS recording using uncompressed AVI output.
+- **High quality capture**: 15 FPS recording using MJPEG compression for optimal file size and performance.
 - **DPI aware**: Optimized for high-resolution displays (e.g., Panasonic FG-Z2).
 - **Automatic file management**: Sequential numbering and timestamped filenames.
 

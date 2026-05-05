@@ -131,8 +131,11 @@ namespace RScreenRec
         {
             if (disposing)
             {
-                pulseTimer?.Stop();
-                pulseTimer?.Dispose();
+                if (pulseTimer != null)
+                {
+                    pulseTimer.Stop();
+                    pulseTimer.Dispose();
+                }
             }
             base.Dispose(disposing);
         }

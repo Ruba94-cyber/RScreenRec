@@ -16,7 +16,11 @@ namespace RScreenRec
                 {
                     File.AppendAllText(
                         LogPath,
-                        $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} | {message}{(ex != null ? " | " + ex : string.Empty)}{Environment.NewLine}"
+                        string.Format("{0:yyyy-MM-dd HH:mm:ss.fff} | {1}{2}{3}",
+                            DateTime.Now,
+                            message,
+                            ex != null ? " | " + ex : string.Empty,
+                            Environment.NewLine)
                     );
                 }
             }
@@ -26,6 +30,9 @@ namespace RScreenRec
             }
         }
 
-        public static string GetLogPath() => LogPath;
+        public static string GetLogPath()
+        {
+            return LogPath;
+        }
     }
 }

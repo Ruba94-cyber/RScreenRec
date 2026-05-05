@@ -36,7 +36,8 @@ namespace RScreenRec
                 SetProcessDPIAware();
             }
 
-            using (var mutex = new Mutex(true, InstanceMutexName, out bool isFirstInstance))
+            bool isFirstInstance;
+            using (var mutex = new Mutex(true, InstanceMutexName, out isFirstInstance))
             {
                 if (!isFirstInstance)
                 {
@@ -44,11 +45,12 @@ namespace RScreenRec
                     return; // second launch only stops the running recorder
                 }
 
+                bool createdNewStopEvent;
                 using (var stopEvent = new EventWaitHandle(
                     false,
                     EventResetMode.ManualReset,
                     StopEventName,
-                    out bool createdNewStopEvent))
+                    out createdNewStopEvent))
                 {
                     if (!createdNewStopEvent)
                     {
@@ -67,7 +69,7 @@ namespace RScreenRec
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error creating output directory: {ex.Message}");
+                        Console.WriteLine(string.Format("Error creating output directory: {0}", ex.Message));
                         return;
                     }
 
@@ -78,13 +80,17 @@ namespace RScreenRec
                         if (name.StartsWith("rec_"))
                         {
                             var parts = name.Split('_');
-                            if (parts.Length > 1 && int.TryParse(parts[1], out int n) && n >= counter)
-                                counter = n + 1;
+                            if (parts.Length > 1)
+                            {
+                                int n;
+                                if (int.TryParse(parts[1], out n) && n >= counter)
+                                    counter = n + 1;
+                            }
                         }
                     }
 
                     string timestamp = DateTime.Now.ToString("HH'h'mm'm'ss's'_dd-MM-yyyy");
-                    string outputPath = Path.Combine(folder, $"rec_{counter}_{timestamp}.avi");
+                    string outputPath = Path.Combine(folder, string.Format("rec_{0}_{1}.avi", counter, timestamp));
 
                     var recorder = new ScreenRecorder();
                     try
@@ -93,7 +99,7 @@ namespace RScreenRec
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Failed to start recording: {ex.Message}");
+                        Console.WriteLine(string.Format("Failed to start recording: {0}", ex.Message));
                         return;
                     }
 
@@ -152,7 +158,7 @@ namespace RScreenRec
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Warning: could not signal stop: {ex.Message}");
+                Console.WriteLine(string.Format("Warning: could not signal stop: {0}", ex.Message));
             }
         }
     }

@@ -11,9 +11,9 @@ namespace RScreenRec
 {
     public class ScreenRecorder
     {
-        private const int FramesPerSecond = 24;
-        private static readonly bool UseMjpegCompression = false;
-        private const int JpegQuality = 80;
+        private const int FramesPerSecond = 15; // Ridotto da 24 a 15 per prestazioni migliori
+        private static readonly bool UseMjpegCompression = true; // Re-enabled MJPEG compression
+        private const int JpegQuality = 90; // Increased to 90 for better compatibility
         private const long AviSizeLimitBytes = AviWriter.MaxUsableFileSizeBytes;
         private Thread recordingThread;
         private bool isRecording = false;
@@ -35,9 +35,9 @@ namespace RScreenRec
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
             if (screenBounds.Width <= 0 || screenBounds.Height <= 0)
-                throw new ArgumentException("Screen bounds must have a positive size.", nameof(screenBounds));
+                throw new ArgumentException("Screen bounds must have a positive size.", "screenBounds");
             if (string.IsNullOrWhiteSpace(outputPath))
-                throw new ArgumentException("Output path is required.", nameof(outputPath));
+                throw new ArgumentException("Output path is required.", "outputPath");
 
             lock (recordingLock)
             {
@@ -56,7 +56,8 @@ namespace RScreenRec
             {
                 writer = CreateWriter(outputPath);
                 segmentStopwatch = Stopwatch.StartNew();
-                Logger.Log($"Recording started. Output: {outputPath}, Bounds: {bounds.Width}x{bounds.Height}, MJPEG: {mjpegEnabled}");
+                Logger.Log(string.Format("Recording started. Output: {0}, Bounds: {1}x{2}, MJPEG: {3}",
+                    outputPath, bounds.Width, bounds.Height, mjpegEnabled));
             }
             catch (Exception ex)
             {
@@ -65,7 +66,7 @@ namespace RScreenRec
                     frameBuffer = null;
                     isRecording = false;
                 }
-                throw new InvalidOperationException($"Failed to initialize AVI writer: {ex.Message}", ex);
+                throw new InvalidOperationException(string.Format("Failed to initialize AVI writer: {0}", ex.Message), ex);
             }
 
             lock (recordingLock)
@@ -90,6 +91,10 @@ namespace RScreenRec
             long frameIntervalTicks = (long)Math.Round(Stopwatch.Frequency / (double)FramesPerSecond);
             if (frameIntervalTicks <= 0)
                 frameIntervalTicks = 1;
+            
+            // Debug: Log frame interval for debugging timing issues
+            Logger.Log(string.Format("RecordLoop: frameIntervalTicks={0}, Stopwatch.Frequency={1}, FramesPerSecond={2}, CalculatedFPS={3:F2}",
+                frameIntervalTicks, Stopwatch.Frequency, FramesPerSecond, Stopwatch.Frequency / (double)frameIntervalTicks));
 
             float dpiScale = DpiHelper.GetSystemDpiScale();
 
@@ -110,7 +115,8 @@ namespace RScreenRec
                         g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                         DrawMousePointer(g, dpiScale);
 
-                        byte[] frameData = GetFrameBytes(bmp, out int frameLength);
+                        int frameLength;
+                        byte[] frameData = GetFrameBytes(bmp, out frameLength);
                         if (writer.WouldExceedLimit(frameLength, AviSizeLimitBytes))
                         {
                             RotateWriter();
@@ -147,14 +153,16 @@ namespace RScreenRec
                 }
             }
 
-            recordingStopwatch?.Stop();
-            segmentStopwatch?.Stop();
+            if (recordingStopwatch != null)
+                recordingStopwatch.Stop();
+            if (segmentStopwatch != null)
+                segmentStopwatch.Stop();
 
             lock (recordingLock)
             {
                 isRecording = false;
             }
-            Logger.Log($"Recording loop stopped. CapturedFrames={capturedFrames}");
+            Logger.Log(string.Format("Recording loop stopped. CapturedFrames={0}", capturedFrames));
         }
 
         private static readonly SolidBrush mousePointerBrush = new SolidBrush(Color.Red);
@@ -218,9 +226,16 @@ namespace RScreenRec
 
         private byte[] GetFrameBytes(Bitmap bmp, out int length)
         {
-            byte[] buffer = BitmapToRgbBytes(bmp);
-            length = buffer.Length;
-            return buffer;
+            if (mjpegEnabled)
+            {
+                return BitmapToJpegBytes(bmp, out length);
+            }
+            else
+            {
+                byte[] buffer = BitmapToRgbBytes(bmp);
+                length = buffer.Length;
+                return buffer;
+            }
         }
 
         private byte[] BitmapToJpegBytes(Bitmap bmp, out int length)
@@ -244,12 +259,12 @@ namespace RScreenRec
             if (jpegEncoderParams == null)
             {
                 jpegEncoderParams = new EncoderParameters(1);
-                jpegEncoderParams.Param[0] = new EncoderParameter(Encoder.Quality, JpegQuality);
+                jpegEncoderParams.Param[0] = new EncoderParameter(Encoder.Quality, (long)JpegQuality);
             }
 
             if (jpegStream == null)
             {
-                jpegStream = new MemoryStream(bounds.Width * bounds.Height);
+                jpegStream = new MemoryStream();
             }
             else
             {
@@ -257,7 +272,9 @@ namespace RScreenRec
                 jpegStream.SetLength(0);
             }
 
-            bmp.Save(jpegStream, jpegCodec, jpegEncoderParams);
+            // Use ImageFormat.Jpeg directly for simplicity
+            bmp.Save(jpegStream, ImageFormat.Jpeg);
+
             length = (int)jpegStream.Position;
 
             if (jpegBuffer == null || jpegBuffer.Length < length)
@@ -281,17 +298,21 @@ namespace RScreenRec
                 recordingThread = null;
             }
 
-            TimeSpan duration = recordingStopwatch?.Elapsed ?? TimeSpan.Zero;
+            TimeSpan duration = recordingStopwatch != null ? recordingStopwatch.Elapsed : TimeSpan.Zero;
             recordingStopwatch = null;
 
-            TimeSpan segmentDuration = segmentStopwatch?.Elapsed ?? duration;
+            TimeSpan segmentDuration = segmentStopwatch != null ? segmentStopwatch.Elapsed : duration;
             segmentStopwatch = null;
 
-            writer?.Close(segmentDuration);
-            writer = null;
+            if (writer != null)
+            {
+                writer.Close(segmentDuration);
+                writer = null;
+            }
             frameBuffer = null;
             DisposeEncodingResources();
-            Logger.Log($"Recording stopped. Duration={segmentDuration}, Frames={capturedFrames}, OutputBase={baseOutputPath}");
+            Logger.Log(string.Format("Recording stopped. Duration={0}, Frames={1}, OutputBase={2}",
+                segmentDuration, capturedFrames, baseOutputPath));
         }
 
         private AviWriter CreateWriter(string path)
@@ -302,9 +323,15 @@ namespace RScreenRec
 
         private void RotateWriter()
         {
-            TimeSpan elapsed = segmentStopwatch?.Elapsed ?? TimeSpan.Zero;
-            writer?.Close(elapsed);
-            segmentStopwatch?.Restart();
+            TimeSpan elapsed = segmentStopwatch != null ? segmentStopwatch.Elapsed : TimeSpan.Zero;
+            if (writer != null)
+            {
+                writer.Close(elapsed);
+            }
+            if (segmentStopwatch != null)
+            {
+                segmentStopwatch.Restart();
+            }
 
             segmentIndex++;
             string nextPath = GetSegmentPath(segmentIndex);
@@ -316,17 +343,22 @@ namespace RScreenRec
             if (index <= 1 || string.IsNullOrEmpty(baseOutputPath))
                 return baseOutputPath;
 
-            string directory = Path.GetDirectoryName(baseOutputPath) ?? string.Empty;
+            string directory = Path.GetDirectoryName(baseOutputPath);
+            if (directory == null)
+                directory = string.Empty;
             string name = Path.GetFileNameWithoutExtension(baseOutputPath);
             string extension = Path.GetExtension(baseOutputPath);
 
-            return Path.Combine(directory, $"{name}_part{index:D2}{extension}");
+            return Path.Combine(directory, string.Format("{0}_part{1:D2}{2}", name, index, extension));
         }
 
         private void DisposeEncodingResources()
         {
-            jpegStream?.Dispose();
-            jpegStream = null;
+            if (jpegStream != null)
+            {
+                jpegStream.Dispose();
+                jpegStream = null;
+            }
 
             if (jpegEncoderParams != null)
             {
