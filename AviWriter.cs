@@ -212,7 +212,9 @@ namespace RScreenRec.Avi
                 }
                 long endPos = writer.BaseStream.Position;
                 UpdateTimingHeaders(effectiveFps, actualDuration);
-                uint suggestedBuffer = (uint)Math.Min(Math.Max(maxFrameSize, rawFrameSize), uint.MaxValue);
+                uint suggestedBuffer = (uint)Math.Min(
+                    codec == VideoCodec.Mjpeg ? maxFrameSize : Math.Max(maxFrameSize, rawFrameSize),
+                    uint.MaxValue);
                 UpdateBufferSizes(suggestedBuffer);
                 writer.BaseStream.Seek(endPos, SeekOrigin.Begin);
             }
