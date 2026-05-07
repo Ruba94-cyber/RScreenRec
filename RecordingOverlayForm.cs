@@ -8,8 +8,8 @@ namespace RScreenRec
 {
     public class RecordingOverlayForm : Form
     {
-        private readonly Timer pulseTimer;
-        private double pulsePhase = 0.0;
+        private readonly Timer blinkTimer;
+        private bool blinkOn = true;
         private readonly float dpiScale;
 
         public RecordingOverlayForm(Rectangle screenBounds)
@@ -39,16 +39,25 @@ namespace RScreenRec
                 TopMost = true;
                 BringToFront();
                 ForceOnTop(Handle);
+                ExcludeFromCapture(Handle);
             };
 
-            pulseTimer = new Timer { Interval = 90 };
-            pulseTimer.Tick += (s, e) =>
+            blinkTimer = new Timer { Interval = 520 };
+            blinkTimer.Tick += (s, e) =>
             {
-                pulsePhase += 0.08;
-                if (pulsePhase > 1.0) pulsePhase -= 1.0;
-                Invalidate();
+                blinkOn = !blinkOn;
+                if (blinkOn)
+                {
+                    Show();
+                    ForceOnTop(Handle);
+                    Invalidate();
+                }
+                else
+                {
+                    Hide();
+                }
             };
-            pulseTimer.Start();
+            Shown += (s, e) => blinkTimer.Start();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -81,9 +90,8 @@ namespace RScreenRec
                 e.Graphics.DrawPath(borderPen, pillPath);
             }
 
-            double pulse = 0.82 + 0.16 * Math.Sin(pulsePhase * 2 * Math.PI);
             int baseDotSize = DpiHelper.ScaleValue(12, dpiScale);
-            int dotSize = Math.Max(8, (int)Math.Round(baseDotSize * pulse));
+            int dotSize = baseDotSize;
             int dotX = padding;
             int dotY = (Height - dotSize) / 2;
 
@@ -93,14 +101,12 @@ namespace RScreenRec
                 (Height - glowSize) / 2,
                 glowSize,
                 glowSize);
-            using (SolidBrush glowBrush = new SolidBrush(Color.FromArgb(120, 255, 64, 64)))
-            {
-                e.Graphics.FillEllipse(glowBrush, glowRect);
-            }
 
             Rectangle dotRect = new Rectangle(dotX, dotY, dotSize, dotSize);
-            using (SolidBrush dotBrush = new SolidBrush(Color.FromArgb(235, 255, 48, 48)))
+            using (SolidBrush glowBrush = new SolidBrush(Color.FromArgb(180, 255, 56, 56)))
+            using (SolidBrush dotBrush = new SolidBrush(Color.FromArgb(255, 255, 35, 35)))
             {
+                e.Graphics.FillEllipse(glowBrush, glowRect);
                 e.Graphics.FillEllipse(dotBrush, dotRect);
             }
 
@@ -110,7 +116,7 @@ namespace RScreenRec
                 dotRect.Top + dotSize / 4,
                 highlightSize,
                 highlightSize);
-            using (SolidBrush highlightBrush = new SolidBrush(Color.FromArgb(180, 255, 200, 200)))
+            using (SolidBrush highlightBrush = new SolidBrush(Color.FromArgb(210, 255, 210, 210)))
             {
                 e.Graphics.FillEllipse(highlightBrush, highlightRect);
             }
@@ -131,10 +137,10 @@ namespace RScreenRec
         {
             if (disposing)
             {
-                if (pulseTimer != null)
+                if (blinkTimer != null)
                 {
-                    pulseTimer.Stop();
-                    pulseTimer.Dispose();
+                    blinkTimer.Stop();
+                    blinkTimer.Dispose();
                 }
             }
             base.Dispose(disposing);
@@ -145,16 +151,29 @@ namespace RScreenRec
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         private const UInt32 SWP_NOMOVE = 0x0002;
         private const UInt32 SWP_NOSIZE = 0x0001;
         private const UInt32 SWP_NOACTIVATE = 0x0010;
         private const UInt32 SWP_SHOWWINDOW = 0x0040;
+        private const UInt32 WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
         private void ForceOnTop(IntPtr handle)
         {
             SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+
+        private void ExcludeFromCapture(IntPtr handle)
+        {
+            try
+            {
+                SetWindowDisplayAffinity(handle, WDA_EXCLUDEFROMCAPTURE);
+            }
+            catch { }
         }
 
         protected override CreateParams CreateParams
