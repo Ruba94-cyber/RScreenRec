@@ -13,5 +13,3 @@ TestResults/
 Thumbs.db
 .DS_Store
 .vscode/
-tools/ffmpeg.exe
-release/
