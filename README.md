@@ -2,13 +2,18 @@
 
 A C# desktop application for advanced screen recording with visual overlays and touch input support.
 
+Author: Paolo Rubagotti.
+
 ## Features
 
 ### 🎥 Screen Recording
 - **Multi-monitor aware**: Automatically records the monitor under the mouse cursor.
-- **High quality capture**: 15 FPS recording using MJPEG compression for optimal file size and performance.
+- **Screen-format safe**: Supports standard, ultrawide, portrait, 16:10, 4:3, and odd pixel dimensions without cropping.
+- **Lightweight high quality capture**: 30 FPS MP4 recording with native Windows H.264 encoding tuned for small screen-recording files.
+- **Small files**: Around 3-4 MB/minute on a 1920x1200 desktop in typical screen-recording use.
 - **DPI aware**: Optimized for high-resolution displays (e.g., Panasonic FG-Z2).
-- **Automatic file management**: Sequential numbering and timestamped filenames.
+- **Portable single executable**: No FFmpeg, codecs, or helper binaries are shipped beside the app.
+- **Automatic file management**: Timestamped filenames avoid slow startup scans.
 
 ### 🎯 Visual Overlays
 - **Recording indicator**: Blinking dot to show active recording.
@@ -41,11 +46,10 @@ RScreenRec.exe
 3. **Output files**: Videos are saved to `%USERPROFILE%\Videos\Captures\`.
 
 ### File Naming
-Files follow the pattern `rec_[number]_[timestamp].avi`:
-- **number**: Automatically incremented counter.
-- **timestamp**: Uses the format `HHhMMmSSs_dd-MM-yyyy`.
+Files follow the pattern `rec_[timestamp].mp4`:
+- **timestamp**: Uses the format `yyyy-MM-dd_HH-mm-ss-fff`.
 
-Example: `rec_1_14h30m45s_26-09-2025.avi`
+Example: `rec_2026-06-04_16-22-40-234.mp4`
 
 ## Code Architecture
 
@@ -59,15 +63,14 @@ Example: `rec_1_14h30m45s_26-09-2025.avi`
 
 #### `ScreenRecorder.cs`
 - Core engine responsible for screen capture.
-- Generates AVI files through a custom writer.
+- Generates MP4 files through the native Media Foundation writer.
 - Thread-safe management of recording loops.
 - Integrates mouse cursor overlay.
 
-#### `AviWriter.cs`
-- Custom AVI writer for uncompressed output.
-- Handles standard AVI headers and indexing.
-- Optimized for real-time streaming.
-- Supports RGB 24-bit format.
+#### `MediaFoundationMp4Writer.cs`
+- Thin COM/PInvoke wrapper around Windows Media Foundation.
+- Writes H.264 video into an MP4 container.
+- Uses explicit frame timestamps and durations for normal playback speed.
 
 #### `RecordingOverlayForm.cs`
 - Transparent overlay indicating active recording.
@@ -83,7 +86,7 @@ Example: `rec_1_14h30m45s_26-09-2025.avi`
 
 ### Performance Tuning
 - **FPS**: Adjustable in `ScreenRecorder.cs` around line 21.
-- **Quality**: Uses uncompressed RGB24 video (modifiable in `AviWriter.cs`).
+- **Quality/size**: Uses compact screen-recording bitrate presets in `ScreenRecorder.cs`.
 - **Buffer size**: Automatically determined based on resolution.
 
 ### Overlay Customization
@@ -111,10 +114,7 @@ Example: `rec_1_14h30m45s_26-09-2025.avi`
 - Restart with administrator privileges if required.
 
 ### Logging
-Errors are written to the console. For advanced debugging:
-```bash
-RScreenRec.exe > log.txt 2>&1
-```
+Runtime logs are written to `%TEMP%\screenrec.log`.
 
 ## Development
 
@@ -128,7 +128,7 @@ RScreenRec.exe > log.txt 2>&1
 RScreenRec/
 ├── Program.cs              # Entry point
 ├── ScreenRecorder.cs       # Core recording engine
-├── AviWriter.cs            # AVI file writer
+├── MediaFoundationMp4Writer.cs # Native MP4/H.264 writer
 ├── RecordingOverlayForm.cs # Recording indicator overlay
 ├── TouchOverlayForm.cs     # Touch input overlay
 ├── RScreenRec.csproj       # Project configuration

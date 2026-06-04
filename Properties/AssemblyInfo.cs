@@ -5,14 +5,17 @@ using System.Runtime.InteropServices;
 // Le informazioni generali relative a un assembly sono controllate dal seguente 
 // set di attributi. Modificare i valori di questi attributi per modificare le informazioni
 // associate a un assembly.
-[assembly: AssemblyTitle("RScreenRec")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("RScreenRec by Paolo Rubagotti")]
+[assembly: AssemblyDescription("Portable screen recorder by Paolo Rubagotti")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Paolo Rubagotti")]
-[assembly: AssemblyProduct("RScreenRec")]
-[assembly: AssemblyCopyright("Paolo Rubagotti")]
+[assembly: AssemblyProduct("RScreenRec by Paolo Rubagotti")]
+[assembly: AssemblyCopyright("Copyright © Paolo Rubagotti 2026")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
+[assembly: AssemblyMetadata("Author", "Paolo Rubagotti")]
+[assembly: AssemblyMetadata("Creator", "Paolo Rubagotti")]
+[assembly: AssemblyInformationalVersion("1.0.0 - Paolo Rubagotti")]
 
 // Se si imposta ComVisible su false, i tipi in questo assembly non saranno visibili 
 // ai componenti COM. Se è necessario accedere a un tipo in questo assembly da 

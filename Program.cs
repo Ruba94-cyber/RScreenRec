@@ -31,6 +31,7 @@ namespace RScreenRec
         [STAThread]
         static void Main()
         {
+            Stopwatch startupStopwatch = Stopwatch.StartNew();
             ConfigureDpiAwareness();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -38,7 +39,7 @@ namespace RScreenRec
             bool isFirstInstance;
             using (var mutex = new Mutex(true, InstanceMutexName, out isFirstInstance))
             {
-                if (!isFirstInstance || HasOtherRunningInstance())
+                if (!isFirstInstance)
                 {
                     SignalStop();
                     return; // second launch only stops the running recorder
@@ -65,43 +66,24 @@ namespace RScreenRec
                     }
                     catch (Exception ex)
                     {
+                        Logger.Log("Error creating output directory.", ex);
                         Console.WriteLine(string.Format("Error creating output directory: {0}", ex.Message));
                         return;
                     }
 
-                    int counter = 1;
-                    foreach (var f in Directory.GetFiles(folder, "rec_*.*"))
-                    {
-                        string extension = Path.GetExtension(f);
-                        if (!string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase) &&
-                            !string.Equals(extension, ".avi", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        string name = Path.GetFileNameWithoutExtension(f);
-                        if (name.StartsWith("rec_"))
-                        {
-                            var parts = name.Split('_');
-                            if (parts.Length > 1)
-                            {
-                                int n;
-                                if (int.TryParse(parts[1], out n) && n >= counter)
-                                    counter = n + 1;
-                            }
-                        }
-                    }
-
-                    string timestamp = DateTime.Now.ToString("HH'h'mm'm'ss's'_dd-MM-yyyy");
-                    string outputPath = Path.Combine(folder, string.Format("rec_{0}_{1}.mp4", counter, timestamp));
+                    string outputPath = CreateOutputPath(folder);
 
                     var recorder = new ScreenRecorder();
                     try
                     {
                         recorder.StartRecording(bounds, outputPath);
+                        Logger.Log(string.Format("Startup ready in {0} ms. Output={1}",
+                            startupStopwatch.ElapsedMilliseconds,
+                            outputPath));
                     }
                     catch (Exception ex)
                     {
+                        Logger.Log("Failed to start recording.", ex);
                         Console.WriteLine(string.Format("Failed to start recording: {0}", ex.Message));
                         return;
                     }
@@ -113,7 +95,7 @@ namespace RScreenRec
                     bool stopRequested = false;
                     while (recorder.IsRecording)
                     {
-                        if (stopEvent.WaitOne(50) || File.Exists(StopRequestPath))
+                        if (stopEvent.WaitOne(20) || File.Exists(StopRequestPath))
                         {
                             stopRequested = true;
                             break;
@@ -127,13 +109,38 @@ namespace RScreenRec
                         touchOverlay.CloseNow();
                     }
 
-                    recorder.StopRecording();
+                    try
+                    {
+                        recorder.StopRecording();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log("Failed to stop recording cleanly.", ex);
+                    }
                     stopEvent.Reset();
                     TryDeleteStopRequest();
                     recordingOverlay.Dispose();
                     touchOverlay.Dispose();
                 }
             }
+        }
+
+        private static string CreateOutputPath(string folder)
+        {
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff");
+            string basePath = Path.Combine(folder, "rec_" + timestamp);
+            string outputPath = basePath + ".mp4";
+            if (!File.Exists(outputPath))
+                return outputPath;
+
+            for (int i = 1; i < 1000; i++)
+            {
+                outputPath = string.Format("{0}_{1}.mp4", basePath, i);
+                if (!File.Exists(outputPath))
+                    return outputPath;
+            }
+
+            return Path.Combine(folder, "rec_" + timestamp + "_" + Guid.NewGuid().ToString("N") + ".mp4");
         }
 
         private static void SignalStop()

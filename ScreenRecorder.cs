@@ -3,10 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.IO.Compression;
-using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -15,15 +12,25 @@ namespace RScreenRec
     public class ScreenRecorder
     {
         private const int FramesPerSecond = 30;
+        private const int MaxCatchUpFramesPerCycle = FramesPerSecond * 2;
+        private const int LowResolutionBitrate = 250000;
+        private const int FullHdBitrate = 400000;
+        private const int QuadHdBitrate = 900000;
+        private const int UltraHdBitrate = 2200000;
         private readonly object recordingLock = new object();
-        private readonly StringBuilder ffmpegLog = new StringBuilder();
-        private Process ffmpegProcess;
         private Thread recordingThread;
         private Stopwatch recordingStopwatch;
+        private ManualResetEventSlim firstFrameWritten;
         private Rectangle bounds;
         private byte[] frameBuffer;
         private bool isRecording;
         private string outputPath;
+        private int encodedWidth;
+        private int encodedHeight;
+        private int encodedPaddingRight;
+        private int encodedPaddingBottom;
+        private int framesWritten;
+        private Exception recordingError;
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
@@ -32,6 +39,9 @@ namespace RScreenRec
             if (string.IsNullOrWhiteSpace(outputPath))
                 throw new ArgumentException("Output path is required.", "outputPath");
 
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+            Stopwatch startupStopwatch = Stopwatch.StartNew();
             lock (recordingLock)
             {
                 if (isRecording)
@@ -39,128 +49,94 @@ namespace RScreenRec
 
                 bounds = screenBounds;
                 this.outputPath = outputPath;
-                frameBuffer = new byte[bounds.Width * bounds.Height * 4];
-            }
-
-            string ffmpegPath = ResolveFfmpegPath();
-            Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-
-            string preset = SelectPreset(screenBounds.Width, screenBounds.Height);
-            string arguments = BuildArguments(screenBounds, outputPath, preset);
-            Logger.Log(string.Format("Starting FFmpeg pipe encoder. Path={0}, Args={1}", ffmpegPath, arguments));
-
-            var process = new Process();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardInput = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                WorkingDirectory = Path.GetDirectoryName(outputPath)
-            };
-            process.EnableRaisingEvents = true;
-            process.ErrorDataReceived += OnFfmpegOutput;
-            process.OutputDataReceived += OnFfmpegOutput;
-            process.Exited += (s, e) =>
-            {
-                lock (recordingLock)
-                {
-                    isRecording = false;
-                }
-                Logger.Log(string.Format("FFmpeg exited. ExitCode={0}, Output={1}", SafeExitCode(process), this.outputPath));
-            };
-
-            ffmpegLog.Length = 0;
-            if (!process.Start())
-                throw new InvalidOperationException("Could not start FFmpeg.");
-
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-
-            lock (recordingLock)
-            {
-                ffmpegProcess = process;
-                isRecording = true;
+                encodedWidth = MakeH264CompatibleDimension(screenBounds.Width);
+                encodedHeight = MakeH264CompatibleDimension(screenBounds.Height);
+                encodedPaddingRight = encodedWidth - screenBounds.Width;
+                encodedPaddingBottom = encodedHeight - screenBounds.Height;
+                frameBuffer = new byte[GetFrameBufferSize(encodedWidth, encodedHeight)];
+                firstFrameWritten = new ManualResetEventSlim(false);
+                framesWritten = 0;
+                recordingError = null;
                 recordingStopwatch = Stopwatch.StartNew();
+                isRecording = true;
             }
 
             recordingThread = new Thread(RecordLoop);
             recordingThread.IsBackground = true;
-            recordingThread.Name = "ScreenCapturePipe";
+            recordingThread.Name = "ScreenCaptureMediaFoundation";
             recordingThread.Priority = ThreadPriority.AboveNormal;
             recordingThread.Start();
 
-            Thread.Sleep(250);
-            if (process.HasExited)
-            {
-                StopRecording();
-                throw new InvalidOperationException("FFmpeg stopped during startup. " + ffmpegLog);
-            }
-
-            Logger.Log(string.Format("Recording started. Output={0}, Bounds={1}x{2}@({3},{4}), FPS={5}, Preset={6}",
-                outputPath, screenBounds.Width, screenBounds.Height, screenBounds.X, screenBounds.Y, FramesPerSecond, preset));
+            int selectedBitrate = SelectBitrate(encodedWidth, encodedHeight);
+            Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, Bitrate={11}, TargetMBPerMinute={12:F1}",
+                startupStopwatch.ElapsedMilliseconds,
+                outputPath,
+                screenBounds.Width,
+                screenBounds.Height,
+                screenBounds.X,
+                screenBounds.Y,
+                encodedWidth,
+                encodedHeight,
+                encodedPaddingRight,
+                encodedPaddingBottom,
+                FramesPerSecond,
+                selectedBitrate,
+                EstimateMegabytesPerMinute(selectedBitrate)));
         }
 
         public void StopRecording()
         {
-            Process process;
             Thread captureThread;
             Stopwatch stopwatch;
+            ManualResetEventSlim firstFrameEvent;
             string path;
 
             lock (recordingLock)
             {
-                process = ffmpegProcess;
                 captureThread = recordingThread;
                 stopwatch = recordingStopwatch;
+                firstFrameEvent = firstFrameWritten;
                 path = outputPath;
+            }
+
+            if (firstFrameEvent != null && !firstFrameEvent.IsSet)
+                firstFrameEvent.Wait(750);
+
+            lock (recordingLock)
+            {
                 isRecording = false;
                 recordingThread = null;
                 recordingStopwatch = null;
+                firstFrameWritten = null;
             }
 
             TimeSpan requestedDuration = stopwatch != null ? stopwatch.Elapsed : TimeSpan.Zero;
             if (stopwatch != null)
                 stopwatch.Stop();
 
-            CloseFfmpegInput(process);
-
-            if (captureThread != null && captureThread.IsAlive && !captureThread.Join(1000))
+            if (captureThread != null && captureThread.IsAlive && !captureThread.Join(90000))
             {
-                Logger.Log("Capture thread did not stop immediately after input pipe close.");
+                Logger.Log("Capture thread did not finalize within timeout.");
             }
 
-            if (process == null)
-                return;
-
-            try
+            Exception error;
+            int written;
+            lock (recordingLock)
             {
-                if (!process.WaitForExit(60000))
-                {
-                    Logger.Log("FFmpeg did not finalize after input EOF; killing process.");
-                    process.Kill();
-                    process.WaitForExit(5000);
-                }
+                error = recordingError;
+                written = framesWritten;
+                frameBuffer = null;
+            }
 
-                long size = File.Exists(path) ? new FileInfo(path).Length : 0;
-                Logger.Log(string.Format("Recording stopped. RequestedDuration={0}, ExitCode={1}, Size={2}, Output={3}",
-                    requestedDuration, SafeExitCode(process), size, path));
-            }
-            finally
-            {
-                try { process.CancelErrorRead(); } catch { }
-                try { process.CancelOutputRead(); } catch { }
-                process.Dispose();
-                lock (recordingLock)
-                {
-                    if (ffmpegProcess == process)
-                        ffmpegProcess = null;
-                    frameBuffer = null;
-                }
-            }
+            if (firstFrameEvent != null)
+                firstFrameEvent.Dispose();
+
+            long size = File.Exists(path) ? new FileInfo(path).Length : 0;
+            Logger.Log(string.Format("Recording stopped. RequestedDuration={0}, Frames={1}, Size={2}, Output={3}",
+                requestedDuration, written, size, path));
+
+            if (error != null)
+                throw new InvalidOperationException("Recording failed while finalizing.", error);
         }
 
         public bool IsRecording
@@ -169,8 +145,6 @@ namespace RScreenRec
             {
                 lock (recordingLock)
                 {
-                    if (ffmpegProcess != null && ffmpegProcess.HasExited)
-                        isRecording = false;
                     return isRecording;
                 }
             }
@@ -179,54 +153,102 @@ namespace RScreenRec
         private void RecordLoop()
         {
             Stopwatch stopwatch;
-            Process process;
             Rectangle captureBounds;
+            string path;
+            int outputWidth;
+            int outputHeight;
 
             lock (recordingLock)
             {
                 stopwatch = recordingStopwatch;
-                process = ffmpegProcess;
                 captureBounds = bounds;
+                path = outputPath;
+                outputWidth = encodedWidth;
+                outputHeight = encodedHeight;
             }
 
-            if (stopwatch == null || process == null)
+            if (stopwatch == null)
                 return;
 
             long frameIntervalTicks = Math.Max(1, (long)Math.Round(Stopwatch.Frequency / (double)FramesPerSecond));
-            long nextFrameTicks = stopwatch.ElapsedTicks;
+            long frameIndex = 0;
             float dpiScale = DpiHelper.GetSystemDpiScale();
+            bool firstFrameSignaled = false;
 
             try
             {
+                using (var writer = new MediaFoundationMp4Writer(path, outputWidth, outputHeight, FramesPerSecond, SelectBitrate(outputWidth, outputHeight)))
                 using (Bitmap bitmap = new Bitmap(captureBounds.Width, captureBounds.Height, PixelFormat.Format32bppArgb))
                 using (Graphics graphics = Graphics.FromImage(bitmap))
                 {
                     while (IsRecording)
                     {
+                        SleepUntil(stopwatch, frameIndex * frameIntervalTicks);
+                        if (!IsRecording)
+                            break;
+
                         graphics.CopyFromScreen(captureBounds.X, captureBounds.Y, 0, 0, captureBounds.Size, CopyPixelOperation.SourceCopy);
                         DrawMousePointer(graphics, captureBounds, dpiScale);
                         DrawTouchPointers(graphics, dpiScale);
-                        byte[] frame = BitmapToBgraTopDown(bitmap);
-                        process.StandardInput.BaseStream.Write(frame, 0, frame.Length);
 
-                        nextFrameTicks += frameIntervalTicks;
-                        long nowTicks = stopwatch.ElapsedTicks;
-                        if (nowTicks > nextFrameTicks)
-                            nextFrameTicks = nowTicks;
-                        else
-                            SleepUntil(stopwatch, nextFrameTicks);
+                        byte[] frame = BitmapToRgb32TopDownPadded(bitmap, outputWidth, outputHeight);
+                        WriteFrame(writer, frame, frame.Length, frameIndex, ref firstFrameSignaled);
+                        frameIndex++;
+
+                        long expectedFrameCount = Math.Max(frameIndex, stopwatch.ElapsedTicks / frameIntervalTicks);
+                        int catchUpFrames = 0;
+                        while (frameIndex < expectedFrameCount &&
+                               catchUpFrames < MaxCatchUpFramesPerCycle &&
+                               IsRecording)
+                        {
+                            WriteFrame(writer, frame, frame.Length, frameIndex, ref firstFrameSignaled);
+                            frameIndex++;
+                            catchUpFrames++;
+                        }
+
+                        if (frameIndex < expectedFrameCount)
+                            frameIndex = expectedFrameCount;
                     }
                 }
             }
             catch (Exception ex)
             {
-                if (IsRecording)
-                    Logger.Log("Capture loop stopped by error.", ex);
+                lock (recordingLock)
+                {
+                    recordingError = ex;
+                    isRecording = false;
+                }
+                Logger.Log("Capture loop stopped by error.", ex);
             }
             finally
             {
-                CloseFfmpegInput(process);
+                lock (recordingLock)
+                {
+                    isRecording = false;
+                }
                 Logger.Log("Capture loop stopped.");
+            }
+        }
+
+        private void WriteFrame(MediaFoundationMp4Writer writer, byte[] frame, int length, long frameIndex, ref bool firstFrameSignaled)
+        {
+            writer.WriteFrame(frame, length, frameIndex);
+            lock (recordingLock)
+            {
+                framesWritten++;
+            }
+
+            if (!firstFrameSignaled)
+            {
+                firstFrameSignaled = true;
+                ManualResetEventSlim firstFrameEvent;
+                lock (recordingLock)
+                {
+                    firstFrameEvent = firstFrameWritten;
+                }
+
+                if (firstFrameEvent != null)
+                    firstFrameEvent.Set();
             }
         }
 
@@ -247,6 +269,7 @@ namespace RScreenRec
         }
 
         private static readonly SolidBrush MousePointerBrush = new SolidBrush(Color.Red);
+
         private static void DrawMousePointer(Graphics graphics, Rectangle captureBounds, float dpiScale)
         {
             Point cursorPos = Cursor.Position;
@@ -286,30 +309,34 @@ namespace RScreenRec
             }
         }
 
-        private unsafe byte[] BitmapToBgraTopDown(Bitmap bitmap)
+        private unsafe byte[] BitmapToRgb32TopDownPadded(Bitmap bitmap, int outputWidth, int outputHeight)
         {
             Rectangle rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
             BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             try
             {
-                int rowBytes = bitmap.Width * 4;
-                int bufferSize = rowBytes * bitmap.Height;
+                int outputStride = outputWidth * 4;
+                int bufferSize = GetFrameBufferSize(outputWidth, outputHeight);
                 if (frameBuffer == null || frameBuffer.Length < bufferSize)
                     frameBuffer = new byte[bufferSize];
 
-                int stride = data.Stride;
-                int absStride = Math.Abs(stride);
+                if (outputWidth != bitmap.Width || outputHeight != bitmap.Height)
+                    Array.Clear(frameBuffer, 0, bufferSize);
+
+                int inputRowBytes = bitmap.Width * 4;
+                int inputStride = data.Stride;
+                int absStride = Math.Abs(inputStride);
                 byte* srcBase = (byte*)data.Scan0.ToPointer();
-                byte* src = stride < 0 ? srcBase + (bitmap.Height - 1) * absStride : srcBase;
+                byte* src = inputStride < 0 ? srcBase + (bitmap.Height - 1) * absStride : srcBase;
 
                 fixed (byte* destBase = frameBuffer)
                 {
                     byte* dest = destBase;
                     for (int y = 0; y < bitmap.Height; y++)
                     {
-                        Buffer.MemoryCopy(src, dest, rowBytes, rowBytes);
-                        dest += rowBytes;
-                        src += stride < 0 ? -absStride : absStride;
+                        Buffer.MemoryCopy(src, dest, outputStride, inputRowBytes);
+                        dest += outputStride;
+                        src += inputStride < 0 ? -absStride : absStride;
                     }
                 }
 
@@ -321,148 +348,36 @@ namespace RScreenRec
             }
         }
 
-        private void OnFfmpegOutput(object sender, DataReceivedEventArgs e)
+        private static int MakeH264CompatibleDimension(int value)
         {
-            if (string.IsNullOrWhiteSpace(e.Data))
-                return;
-
-            lock (ffmpegLog)
-            {
-                if (ffmpegLog.Length > 12000)
-                    ffmpegLog.Remove(0, ffmpegLog.Length - 8000);
-                ffmpegLog.AppendLine(e.Data);
-            }
-
-            if (e.Data.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                e.Data.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                Logger.Log("FFmpeg: " + e.Data);
-            }
+            return (value & 1) == 0 ? value : value + 1;
         }
 
-        private static string ResolveFfmpegPath()
+        private static int GetFrameBufferSize(int width, int height)
         {
-            Assembly assembly = Assembly.GetExecutingAssembly();
-            string resourceName = null;
+            long bytes = width * (long)height * 4L;
+            if (bytes > int.MaxValue)
+                throw new InvalidOperationException("Screen resolution is too large for a single RGB32 frame buffer.");
 
-            foreach (string name in assembly.GetManifestResourceNames())
-            {
-                if (name.EndsWith(".tools.ffmpeg.exe.gz", StringComparison.OrdinalIgnoreCase) ||
-                    name.EndsWith(".ffmpeg.exe.gz", StringComparison.OrdinalIgnoreCase) ||
-                    name.EndsWith(".tools.ffmpeg.exe", StringComparison.OrdinalIgnoreCase) ||
-                    name.EndsWith(".ffmpeg.exe", StringComparison.OrdinalIgnoreCase))
-                {
-                    resourceName = name;
-                    break;
-                }
-            }
-
-            if (resourceName == null)
-                throw new FileNotFoundException("Embedded ffmpeg.exe resource was not found. The executable was not packaged correctly.");
-
-            string cacheDirectory = Path.Combine(Path.GetTempPath(), "RScreenRec");
-            Directory.CreateDirectory(cacheDirectory);
-            string ffmpegPath = Path.Combine(cacheDirectory, "RScreenRec_ffmpeg.exe");
-
-            using (Stream resource = assembly.GetManifestResourceStream(resourceName))
-            {
-                if (resource == null)
-                    throw new FileNotFoundException("Embedded ffmpeg.exe resource could not be opened.");
-
-                bool compressed = resourceName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase);
-                FileInfo existing = new FileInfo(ffmpegPath);
-                if (!existing.Exists || existing.Length == 0)
-                {
-                    string tempPath = ffmpegPath + ".tmp";
-                    using (FileStream output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                    {
-                        if (compressed)
-                        {
-                            using (var gzip = new GZipStream(resource, CompressionMode.Decompress))
-                            {
-                                gzip.CopyTo(output);
-                            }
-                        }
-                        else
-                        {
-                            resource.CopyTo(output);
-                        }
-                    }
-
-                    if (File.Exists(ffmpegPath))
-                        File.Delete(ffmpegPath);
-                    File.Move(tempPath, ffmpegPath);
-                }
-            }
-
-            return ffmpegPath;
+            return (int)bytes;
         }
 
-        private static string BuildArguments(Rectangle bounds, string outputPath, string preset)
-        {
-            return string.Join(" ", new[]
-            {
-                "-hide_banner",
-                "-loglevel warning",
-                "-y",
-                "-f rawvideo",
-                "-pixel_format bgra",
-                "-video_size " + bounds.Width + "x" + bounds.Height,
-                "-framerate " + FramesPerSecond,
-                "-i pipe:0",
-                "-an",
-                "-c:v libx264",
-                "-preset " + preset,
-                "-crf " + SelectCrf(bounds.Width, bounds.Height),
-                "-pix_fmt yuv420p",
-                "-g " + (FramesPerSecond * 2),
-                Quote(outputPath)
-            });
-        }
-
-        private static string SelectPreset(int width, int height)
+        private static int SelectBitrate(int width, int height)
         {
             long pixels = width * (long)height;
             if (pixels >= 3840L * 2160L)
-                return "ultrafast";
+                return UltraHdBitrate;
             if (pixels >= 2560L * 1440L)
-                return "superfast";
-            return "veryfast";
+                return QuadHdBitrate;
+            if (pixels >= 1280L * 720L)
+                return FullHdBitrate;
+
+            return LowResolutionBitrate;
         }
 
-        private static int SelectCrf(int width, int height)
+        private static double EstimateMegabytesPerMinute(int bitrate)
         {
-            long pixels = width * (long)height;
-            return pixels >= 2560L * 1440L ? 24 : 23;
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
-        }
-
-        private static void CloseFfmpegInput(Process process)
-        {
-            if (process == null)
-                return;
-
-            try
-            {
-                process.StandardInput.BaseStream.Close();
-            }
-            catch { }
-        }
-
-        private static int SafeExitCode(Process process)
-        {
-            try
-            {
-                return process.HasExited ? process.ExitCode : int.MinValue;
-            }
-            catch
-            {
-                return int.MinValue;
-            }
+            return bitrate * 60.0 / 8.0 / 1024.0 / 1024.0;
         }
     }
 }
