@@ -20,7 +20,7 @@ as a fallback, and does not create monitor-wide touch/REC overlays.
   required before release.
 - Some hardware-accelerated, protected, layered, or special windows return black,
   stale, or incomplete frames even if PrintWindow reports success.
-- A minimized window stops recording rather than claiming to produce live frames.
+- A minimized window keeps the MP4 timeline running with the last captured frame.\n  Live content updates while minimized are not guaranteed; capture resumes on restore.
 - The output resolution is fixed at the size selected at startup. Resizing the
   target is handled by fitting its current image inside the original video size,
   preserving aspect ratio and adding black bars when necessary. Very large
@@ -57,5 +57,4 @@ development environment. The experimental feature must remain in a draft PR.
 
 **Release blockers:** A verified Windows build, capture/playback validation,
 GPU-backed app coverage, and an implementation using Windows Graphics Capture
-for broader compatibility. No claim is made that minimized apps continue to
-produce live frames.
+for broader compatibility. No claim is made that minimized apps continue to\nproduce live frames.
