@@ -45,3 +45,17 @@ as a fallback, and does not create monitor-wide touch/REC overlays.
 
 Do not merge this feature into the default release until the behavior is
 verified and the limitations are acceptable.
+
+## Build and acceptance
+
+Run `scripts/build-check.ps1` on a Windows development machine with
+Visual Studio Build Tools and the .NET Framework 4.8 targeting pack.
+
+**Current status:** Source changes have been committed, but no Windows build,
+automated UI test, or actual MP4 playback test has been executed in this
+development environment. The experimental feature must remain in a draft PR.
+
+**Release blockers:** A verified Windows build, capture/playback validation,
+GPU-backed app coverage, and an implementation using Windows Graphics Capture
+for broader compatibility. No claim is made that minimized apps continue to
+produce live frames.
