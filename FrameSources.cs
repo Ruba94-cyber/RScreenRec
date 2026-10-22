@@ -59,7 +59,13 @@ namespace RScreenRec
             if (!IsWindow(window))
                 throw new InvalidOperationException("The selected window has been closed.");
             if (IsIconic(window))
-                throw new InvalidOperationException("The selected window was minimized; capture stopped.");
+            {
+                // Windows may stop rendering minimized windows. Preserve the
+                // last frame without ever substituting unrelated desktop pixels.
+                // The MP4 timeline continues; these are held frames, not live
+                // updates from the minimized application.
+                return;
+            }
 
             NativeRect rect;
             if (!GetWindowRect(window, out rect))
