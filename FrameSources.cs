@@ -32,6 +32,7 @@ namespace RScreenRec
         private readonly Size size;
         private Bitmap windowBitmap;
         private const uint RenderFullContent = 2;
+        private const long MaxCapturePixels = 3840L * 2160L * 4L;
 
         internal PrintWindowFrameSource(IntPtr window)
         {
@@ -42,6 +43,8 @@ namespace RScreenRec
             NativeRect rect;
             if (!GetWindowRect(window, out rect) || rect.Right <= rect.Left || rect.Bottom <= rect.Top)
                 throw new InvalidOperationException("Cannot determine the selected window dimensions.");
+            if ((rect.Right - (long)rect.Left) * (rect.Bottom - (long)rect.Top) > MaxCapturePixels)
+                throw new InvalidOperationException("The selected window is too large for compatibility capture.");
             this.window = window;
             size = new Size(rect.Right - rect.Left, rect.Bottom - rect.Top);
             windowBitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
@@ -66,6 +69,8 @@ namespace RScreenRec
             int height = rect.Bottom - rect.Top;
             if (width <= 0 || height <= 0)
                 throw new InvalidOperationException("The selected window has invalid dimensions.");
+            if (width * (long)height > MaxCapturePixels)
+                throw new InvalidOperationException("The selected window has grown beyond the capture size limit.");
 
             // PrintWindow draws at the target's current dimensions. Capture to an
             // appropriately sized off-screen bitmap, then fit it inside the
