@@ -65,7 +65,7 @@ namespace RScreenRec
                     {
                         DialogResult choice = MessageBox.Show(
                             "Experimental window capture uses PrintWindow, not Windows Graphics Capture. " +
-                            "Some apps may render black or incomplete frames; minimizing the window stops recording. " +
+                            "Some apps may render black or incomplete frames; minimizing holds the last frame until restored. " +
                             "Other windows are never used as a fallback. Continue?",
                             "RScreenRec - Experimental window capture",
                             MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
