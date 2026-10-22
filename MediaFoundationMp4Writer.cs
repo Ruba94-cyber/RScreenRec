@@ -9,6 +9,8 @@ namespace RScreenRec
         private const int MFSTARTUP_FULL = 0;
         private const int COINIT_MULTITHREADED = 0;
         private const long HnsPerSecond = 10000000L;
+        // The media type requires a nominal rate; quality mode controls actual encoding complexity.
+        private const int NominalAverageBitrate = 400000;
 
         private readonly int width;
         private readonly int height;
@@ -19,15 +21,43 @@ namespace RScreenRec
         private bool finalized;
         private bool mediaFoundationStarted;
         private bool comInitialized;
+        private bool writingStarted;
 
-        public MediaFoundationMp4Writer(string outputPath, int width, int height, int fps, int bitrate)
+        public MediaFoundationMp4Writer(string outputPath, int width, int height, int fps, int quality)
         {
+            if (quality < 1 || quality > 100)
+                throw new ArgumentOutOfRangeException("quality", "H.264 quality must be between 1 and 100.");
+
             this.width = width;
             this.height = height;
             this.fps = fps;
             frameDuration = HnsPerSecond / fps;
 
-            Initialize(outputPath, bitrate);
+            try
+            {
+                Initialize(outputPath, quality);
+            }
+            catch
+            {
+                // A failed constructor is never disposed by a using statement.
+                // Release any COM writer, Media Foundation and COM apartment here.
+                if (sinkWriter != null)
+                {
+                    ReleaseComObject(sinkWriter);
+                    sinkWriter = null;
+                }
+                if (mediaFoundationStarted)
+                {
+                    MFShutdown();
+                    mediaFoundationStarted = false;
+                }
+                if (comInitialized)
+                {
+                    CoUninitialize();
+                    comInitialized = false;
+                }
+                throw;
+            }
         }
 
         public void WriteFrame(byte[] frameData, int length, long frameIndex)
@@ -75,21 +105,28 @@ namespace RScreenRec
 
         public void Dispose()
         {
-            FinalizeWriter();
-            if (mediaFoundationStarted)
+            try
             {
-                try { MFShutdown(); } catch { }
-                mediaFoundationStarted = false;
+                FinalizeWriter();
             }
-
-            if (comInitialized)
+            finally
             {
-                CoUninitialize();
-                comInitialized = false;
+                // Release Media Foundation and COM even when MP4 finalization fails.
+                if (mediaFoundationStarted)
+                {
+                    try { MFShutdown(); } catch { }
+                    mediaFoundationStarted = false;
+                }
+
+                if (comInitialized)
+                {
+                    CoUninitialize();
+                    comInitialized = false;
+                }
             }
         }
 
-        private void Initialize(string outputPath, int bitrate)
+        private void Initialize(string outputPath, int quality)
         {
             int hr = CoInitializeEx(IntPtr.Zero, COINIT_MULTITHREADED);
             if (hr >= 0)
@@ -100,6 +137,7 @@ namespace RScreenRec
             mediaFoundationStarted = true;
 
             IMFAttributes sinkAttributes = null;
+            IMFAttributes encodingParameters = null;
             IMFMediaType outputType = null;
             IMFMediaType inputType = null;
 
@@ -115,7 +153,7 @@ namespace RScreenRec
                 ThrowIfFailed(MFCreateMediaType(out outputType), "MFCreateMediaType(output)");
                 SetGuid(outputType, MediaFoundationGuids.MF_MT_MAJOR_TYPE, MediaFoundationGuids.MFMediaType_Video);
                 SetGuid(outputType, MediaFoundationGuids.MF_MT_SUBTYPE, MediaFoundationGuids.MFVideoFormat_H264);
-                SetUInt32(outputType, MediaFoundationGuids.MF_MT_AVG_BITRATE, bitrate);
+                SetUInt32(outputType, MediaFoundationGuids.MF_MT_AVG_BITRATE, NominalAverageBitrate);
                 SetUInt32(outputType, MediaFoundationGuids.MF_MT_INTERLACE_MODE, 2);
                 SetSize(outputType, MediaFoundationGuids.MF_MT_FRAME_SIZE, width, height);
                 SetRatio(outputType, MediaFoundationGuids.MF_MT_FRAME_RATE, fps, 1);
@@ -130,14 +168,20 @@ namespace RScreenRec
                 SetSize(inputType, MediaFoundationGuids.MF_MT_FRAME_SIZE, width, height);
                 SetRatio(inputType, MediaFoundationGuids.MF_MT_FRAME_RATE, fps, 1);
                 SetRatio(inputType, MediaFoundationGuids.MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-                ThrowIfFailed(sinkWriter.SetInputMediaType(streamIndex, inputType, null), "IMFSinkWriter.SetInputMediaType");
+                ThrowIfFailed(MFCreateAttributes(out encodingParameters, 2), "MFCreateAttributes(encoding parameters)");
+                SetUInt32(encodingParameters, MediaFoundationGuids.CODECAPI_AVEncCommonRateControlMode,
+                    MediaFoundationGuids.AVEncCommonRateControlModeQuality);
+                SetUInt32(encodingParameters, MediaFoundationGuids.CODECAPI_AVEncCommonQuality, quality);
+                ThrowIfFailed(sinkWriter.SetInputMediaType(streamIndex, inputType, encodingParameters), "IMFSinkWriter.SetInputMediaType");
                 ThrowIfFailed(sinkWriter.BeginWriting(), "IMFSinkWriter.BeginWriting");
+                writingStarted = true;
                 Logger.Log("Media Foundation writer ready.");
             }
             finally
             {
                 ReleaseComObject(inputType);
                 ReleaseComObject(outputType);
+                ReleaseComObject(encodingParameters);
                 ReleaseComObject(sinkAttributes);
             }
         }
@@ -153,7 +197,8 @@ namespace RScreenRec
 
             try
             {
-                ThrowIfFailed(sinkWriter.Finalize_(), "IMFSinkWriter.Finalize");
+                if (writingStarted)
+                    ThrowIfFailed(sinkWriter.Finalize_(), "IMFSinkWriter.Finalize");
             }
             finally
             {
@@ -252,6 +297,7 @@ namespace RScreenRec
 
         private static class MediaFoundationGuids
         {
+            public const int AVEncCommonRateControlModeQuality = 3;
             public static readonly Guid MF_MT_MAJOR_TYPE = new Guid("48EBA18E-F8C9-4687-BF11-0A74C9F96A8F");
             public static readonly Guid MF_MT_SUBTYPE = new Guid("F7E34C9A-42E8-4714-B74B-CB29D72C35E5");
             public static readonly Guid MF_MT_AVG_BITRATE = new Guid("20332624-FB0D-4D9E-BD0D-CBF6786C102E");
@@ -268,6 +314,8 @@ namespace RScreenRec
             public static readonly Guid MFMediaType_Video = new Guid("73646976-0000-0010-8000-00AA00389B71");
             public static readonly Guid MFVideoFormat_H264 = new Guid("34363248-0000-0010-8000-00AA00389B71");
             public static readonly Guid MFVideoFormat_RGB32 = new Guid("00000016-0000-0010-8000-00AA00389B71");
+            public static readonly Guid CODECAPI_AVEncCommonRateControlMode = new Guid("1C0608E9-370C-4710-8A58-CB6181C42423");
+            public static readonly Guid CODECAPI_AVEncCommonQuality = new Guid("FCBF57A3-7EA5-4B0C-9644-69B40C39C391");
         }
 
         [ComImport]
@@ -429,5 +477,6 @@ namespace RScreenRec
             [PreserveSig] int GetServiceForStream(int dwStreamIndex, ref Guid guidService, ref Guid riid, out IntPtr ppvObject);
             [PreserveSig] int GetStatistics(int dwStreamIndex, IntPtr pStats);
         }
+
     }
 }

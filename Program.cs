@@ -10,9 +10,13 @@ namespace RScreenRec
 {
     static class Program
     {
-        private const string InstanceMutexName = @"Global\RScreenRec_SingleInstance";
-        private const string StopEventName = @"Global\RScreenRec_StopEvent";
-        private static readonly string StopRequestPath = Path.Combine(Path.GetTempPath(), "RScreenRec.stop");
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+        private const int VK_SHIFT = 0x10;
+
+        private const string InstanceMutexName = @"Local\RScreenRec_SingleInstance";
+        private const string StopEventName = @"Local\RScreenRec_StopEvent";
+        private static readonly string StopRequestPath = Path.Combine(Path.GetTempPath(), "RScreenRec_" + Environment.UserName + "_" + Process.GetCurrentProcess().SessionId + ".stop");
 
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
@@ -36,6 +40,7 @@ namespace RScreenRec
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            bool windowSelectionRequested = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             bool isFirstInstance;
             using (var mutex = new Mutex(true, InstanceMutexName, out isFirstInstance))
             {
@@ -55,11 +60,21 @@ namespace RScreenRec
                     stopEvent.Reset();
                     TryDeleteStopRequest();
 
+                    IntPtr selectedWindow = IntPtr.Zero;
+                    if (windowSelectionRequested)
+                    {
+                        selectedWindow = WindowPicker.SelectWindow();
+                        if (selectedWindow == IntPtr.Zero) return;
+                    }
+
                     // Get the monitor under the cursor
                     Screen activeScreen = Screen.FromPoint(Cursor.Position);
                     Rectangle bounds = activeScreen.Bounds;
 
-                    string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Captures");
+                    string benchmarkFolder = Environment.GetEnvironmentVariable("RSCREENREC_BENCHMARK_OUTPUT_DIRECTORY");
+                    string folder = string.IsNullOrWhiteSpace(benchmarkFolder)
+                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Captures")
+                        : Path.GetFullPath(benchmarkFolder);
                     try
                     {
                         Directory.CreateDirectory(folder);
@@ -67,7 +82,8 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Error creating output directory.", ex);
-                        Console.WriteLine(string.Format("Error creating output directory: {0}", ex.Message));
+                        MessageBox.Show("Cannot create the recording folder: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -76,7 +92,21 @@ namespace RScreenRec
                     var recorder = new ScreenRecorder();
                     try
                     {
-                        recorder.StartRecording(bounds, outputPath);
+                        if (selectedWindow == IntPtr.Zero)
+                            recorder.StartRecording(bounds, outputPath);
+                        else
+                            recorder.StartWindowRecording(selectedWindow, outputPath);
+                        if (selectedWindow != IntPtr.Zero &&
+                            recorder.WindowCaptureBackend != "Windows Graphics Capture")
+                        {
+                            MessageBox.Show(
+                                "Windows Graphics Capture is unavailable for this window or system. " +
+                                "RScreenRec is using PrintWindow compatibility capture; some GPU-rendered windows may be blank or incomplete. " +
+                                "A minimized window holds its last captured frame. Other desktop content is never used as a fallback.",
+                                "RScreenRec - Compatibility capture",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                        }
                         Logger.Log(string.Format("Startup ready in {0} ms. Output={1}",
                             startupStopwatch.ElapsedMilliseconds,
                             outputPath));
@@ -84,12 +114,15 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Failed to start recording.", ex);
-                        Console.WriteLine(string.Format("Failed to start recording: {0}", ex.Message));
+                        MessageBox.Show("Recording could not start: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
-                    OverlayHost touchOverlay = OverlayHost.Start("TouchOverlay", () => new TouchOverlayForm(bounds));
-                    OverlayHost recordingOverlay = OverlayHost.Start("RecordingOverlay", () => new RecordingOverlayForm(bounds));
+                    OverlayHost touchOverlay = selectedWindow == IntPtr.Zero
+                        ? OverlayHost.Start("TouchOverlay", () => new TouchOverlayForm(bounds)) : null;
+                    OverlayHost recordingOverlay = selectedWindow == IntPtr.Zero
+                        ? OverlayHost.Start("RecordingOverlay", () => new RecordingOverlayForm(bounds)) : null;
 
                     // Wait until stop is requested or recording ends
                     bool stopRequested = false;
@@ -105,8 +138,8 @@ namespace RScreenRec
                     if (stopRequested)
                     {
                         Logger.Log("Stop request detected; closing overlays immediately.");
-                        recordingOverlay.CloseNow();
-                        touchOverlay.CloseNow();
+                        if (recordingOverlay != null) recordingOverlay.CloseNow();
+                        if (touchOverlay != null) touchOverlay.CloseNow();
                     }
 
                     try
@@ -116,11 +149,13 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Failed to stop recording cleanly.", ex);
+                        MessageBox.Show("Recording ended with an error: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                     stopEvent.Reset();
                     TryDeleteStopRequest();
-                    recordingOverlay.Dispose();
-                    touchOverlay.Dispose();
+                    if (recordingOverlay != null) recordingOverlay.Dispose();
+                    if (touchOverlay != null) touchOverlay.Dispose();
                 }
             }
         }
@@ -163,14 +198,19 @@ namespace RScreenRec
                 Console.WriteLine(string.Format("Warning: could not signal stop: {0}", ex.Message));
             }
 
-            try
+            // The file is a fallback only. Writing it after a successful event
+            // signal could leave a stale request that stops a later recording.
+            if (!signaled)
             {
-                File.WriteAllText(StopRequestPath, DateTime.UtcNow.ToString("O"));
-                signaled = true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Log("Could not write stop request file.", ex);
+                try
+                {
+                    File.WriteAllText(StopRequestPath, DateTime.UtcNow.ToString("O"));
+                    signaled = true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log("Could not write stop request file.", ex);
+                }
             }
 
             Logger.Log(string.Format("Stop signal requested. Success={0}", signaled));
@@ -188,16 +228,16 @@ namespace RScreenRec
 
             try
             {
-                SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                int result = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                if (result >= 0)
+                    return;
             }
-            catch
-            {
-                try
-                {
-                    SetProcessDPIAware();
-                }
-                catch { }
-            }
+            catch (EntryPointNotFoundException) { }
+            catch (DllNotFoundException) { }
+
+            try { SetProcessDPIAware(); }
+            catch (EntryPointNotFoundException) { }
+            catch (DllNotFoundException) { }
         }
 
         private static bool HasOtherRunningInstance()
@@ -205,7 +245,8 @@ namespace RScreenRec
             try
             {
                 int currentId = Process.GetCurrentProcess().Id;
-                foreach (Process process in Process.GetProcessesByName("RScreenRec"))
+                string currentProcessName = Process.GetCurrentProcess().ProcessName;
+                foreach (Process process in Process.GetProcessesByName(currentProcessName))
                 {
                     using (process)
                     {
@@ -304,6 +345,7 @@ namespace RScreenRec
                     form = formFactory();
                     if (closeRequested)
                     {
+                        form.Dispose();
                         ready.Set();
                         return;
                     }
