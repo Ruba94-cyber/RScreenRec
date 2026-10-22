@@ -1,0 +1,35 @@
+name: Windows build and release candidate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts\build-check.ps1', 'scripts\test-windows-smoke.ps1', 'scripts\Package-ReleaseCandidate.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$path`: $($_.Message)" }; exit 1 }
+          }
+      - name: Build and package Release x64 candidate
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'RScreenRec-release-candidates'
+          & .\scripts\Package-ReleaseCandidate.ps1 -OutputDirectory $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RScreenRec-1.2.0-rc.1-windows-x64
+          path: ${{ runner.temp }}/RScreenRec-release-candidates/*
+          if-no-files-found: error
+          retention-days: 14

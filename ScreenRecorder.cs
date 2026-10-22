@@ -13,7 +13,7 @@ namespace RScreenRec
     {
         private const int FramesPerSecond = 30;
         private const int MaxCatchUpFramesPerCycle = FramesPerSecond * 2;
-        private const int ScreenRecordingQuality = 35;
+        private const int ScreenRecordingQuality = 60;
         private readonly object recordingLock = new object();
         private Thread recordingThread;
         private Stopwatch recordingStopwatch;

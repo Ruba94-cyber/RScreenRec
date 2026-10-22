@@ -10,9 +10,11 @@
     <RootNamespace>RScreenRec</RootNamespace>
     <AssemblyName>RScreenRec</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <Prefer32Bit>false</Prefer32Bit>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
     <RuntimeIdentifier>win</RuntimeIdentifier>
+    <RuntimeIdentifiers>win;win-x64</RuntimeIdentifiers>
     <ApplicationIcon>Icon_screenshotrecord.ico</ApplicationIcon>
     <ProjectGuid>{AA56E68A-0248-B00F-0561-990CED36BC73}</ProjectGuid>
     <PublishUrl>publish\</PublishUrl>
@@ -26,7 +28,7 @@
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
     <ApplicationRevision>0</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <ApplicationVersion>1.2.0.%2a</ApplicationVersion>
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>

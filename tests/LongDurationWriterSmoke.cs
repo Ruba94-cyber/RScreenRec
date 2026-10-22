@@ -31,7 +31,12 @@ internal static class LongDurationWriterSmoke
                 null);
             MethodInfo writeFrame = writerType.GetMethod("WriteFrame", BindingFlags.Instance | BindingFlags.Public);
             MethodInfo dispose = writerType.GetMethod("Dispose", BindingFlags.Instance | BindingFlags.Public);
-            object writer = constructor.Invoke(new object[] { output, width, height, fps, 35 });
+            Type recorderType = product.GetType("RScreenRec.ScreenRecorder", true);
+            FieldInfo qualityField = recorderType.GetField("ScreenRecordingQuality", BindingFlags.Static | BindingFlags.NonPublic);
+            if (qualityField == null)
+                throw new MissingFieldException("The recorder quality setting could not be found.");
+            int quality = (int)qualityField.GetRawConstantValue();
+            object writer = constructor.Invoke(new object[] { output, width, height, fps, quality });
 
             byte[] pixels = new byte[width * height * 4];
             for (int index = 0; index < pixels.Length; index += 4)
@@ -51,7 +56,7 @@ internal static class LongDurationWriterSmoke
             }
 
             dispose.Invoke(writer, null);
-            Console.WriteLine("synthetic_seconds=" + durationSeconds + " fps=" + fps +
+            Console.WriteLine("quality=" + quality + " synthetic_seconds=" + durationSeconds + " fps=" + fps +
                 " frames=" + frameCount + " bytes=" + new FileInfo(output).Length);
             return 0;
         }

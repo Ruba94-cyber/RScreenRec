@@ -10,7 +10,7 @@ Author: Paolo Rubagotti.
 - **Multi-monitor aware**: Automatically records the monitor under the mouse cursor.
 - **Screen-format safe**: Supports standard, ultrawide, portrait, 16:10, 4:3, and odd pixel dimensions without cropping.
 - **Compact H.264 encoding**: 30 FPS with a constant-quality profile tuned for readable screen text and controlled file size.
-- **Variable file size**: Output depends on resolution and how much the screen changes. In 1920x1080 synthetic tests, a UI sample averaged about 3.85 MB/minute (roughly 231 MB/hour when scaled linearly); a deliberately high-motion sample averaged about 21.46 MB/minute (roughly 1.29 GB/hour). These are sample-based estimates, not file-size limits.
+- **Variable file size**: Output depends on resolution and screen motion. A 3-second, 1920x1200 synthetic office-UI clip encoded at quality 60 was 224,742 bytes; a simple linear scale would be about 270 MB/hour for that test content. This is an illustration, not a prediction or a file-size limit; changing video and higher resolutions can be substantially larger.
 - **DPI aware**: Handles high-resolution displays and mixed-DPI coordinate spaces.
 - **Portable single executable**: No FFmpeg, codecs, or helper binaries are shipped beside the app.
 - **Automatic file management**: Timestamped filenames avoid slow startup scans.
@@ -55,7 +55,7 @@ RScreenRec.exe
 
 Windows Graphics Capture is used when available. If it cannot be initialized, RScreenRec warns before using PrintWindow compatibility capture; some GPU-rendered or protected windows may then appear blank or incomplete. When a target is minimized, Windows may stop rendering it. RScreenRec keeps the last captured image in the video timeline and resumes with new frames after the window is restored; this is not live capture while minimized.
 
-The H.264 profile preserves the 30 FPS timeline and does not deliberately reduce the frame rate to shrink files. Repeated samples hold the last complete image when the capture source has no new frame. Quality-based encoding has no strict file-size cap, so rapidly changing full-screen content can produce much larger files than a mostly static desktop. A more aggressive test setting produced a UI sample about one-third smaller than quality 35, but its SSIM against quality 35 fell to 0.963 and thin grid lines disappeared; quality 35 remains the default to protect small text and details. A synthetic 3601-second, 30 FPS writer run finalized and decoded successfully; this validates long MP4 timelines, not a 60-minute interactive capture session.
+The H.264 profile preserves a 30 FPS output timeline and does not deliberately reduce the frame rate to shrink files. Repeated samples hold the last complete image when the capture source has no new frame. Quality-based encoding has no strict file-size cap, so rapidly changing full-screen content can produce much larger files than a mostly static desktop. In a 3-second, 1920x1200 synthetic office-UI comparison, quality 60 produced a 224,742-byte clip (56.9% smaller than quality 35 at 521,487 bytes). First-frame SSIM against the source image was 0.9913 at quality 60 and 0.9573 at quality 35. Quality 30 was 39.5% smaller than quality 60, but visibly lost fine lines and measured 0.9214 SSIM, so quality 60 is the current size/readability balance. These short synthetic tests do not predict every screen or encoder. A synthetic 3601-second, 30 FPS writer run is also checked for timestamps, finalization, and full decoding; this validates long MP4 timelines, not a 60-minute interactive capture session or its resulting file size.
 
 ### Windows smoke tests
 
@@ -106,7 +106,7 @@ Example: `rec_2026-06-04_16-22-40-234.mp4`
 
 ### Performance Tuning
 - **FPS**: 30 FPS, configured in `ScreenRecorder.cs`.
-- **Quality/size**: H.264 constant-quality profile 35; lower values can reduce detail, and actual file size varies with scene motion.
+- **Quality/size**: H.264 constant-quality profile 60; actual file size varies with scene motion, resolution, and the Windows encoder. The app does not impose a maximum file size or intentionally drop frames to reduce storage.
 - **Buffer size**: Automatically determined from the selected capture dimensions.
 
 ### Overlay Customization

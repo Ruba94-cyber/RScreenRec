@@ -25,8 +25,8 @@ namespace RScreenRec
 
         public MediaFoundationMp4Writer(string outputPath, int width, int height, int fps, int quality)
         {
-            if (quality < 0 || quality > 100)
-                throw new ArgumentOutOfRangeException("quality", "H.264 quality must be between 0 and 100.");
+            if (quality < 1 || quality > 100)
+                throw new ArgumentOutOfRangeException("quality", "H.264 quality must be between 1 and 100.");
 
             this.width = width;
             this.height = height;

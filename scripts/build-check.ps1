@@ -17,12 +17,12 @@ if (-not $msbuild) {
 if (-not $msbuild) { throw 'MSBuild not found. Install Visual Studio Build Tools with .NET Framework 4.8 targeting pack.' }
 
 Write-Host "Building: $project"
-& $msbuild $project /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /verbosity:minimal
+& $msbuild $project /t:Rebuild /restore /p:Configuration=Release /p:Platform=AnyCPU /p:PlatformTarget=x64 /p:Prefer32Bit=false /verbosity:minimal
 if ($LASTEXITCODE -ne 0) { throw "MSBuild failed (exit $LASTEXITCODE)." }
 
 $exe = Join-Path $root 'bin\Release\RScreenRec.exe'
 if (-not (Test-Path $exe)) { throw 'Build completed without the expected executable.' }
-Write-Host "Build OK: $exe"
+Write-Host "Release x64 build OK: $exe"
 Write-Host ''
 Write-Host 'Manual checks required:'
 Write-Host '1. Launch normally, record the monitor, launch again to stop, play the MP4.'
