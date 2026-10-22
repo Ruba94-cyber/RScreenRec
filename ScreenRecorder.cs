@@ -97,30 +97,20 @@ namespace RScreenRec
                 stopwatch = recordingStopwatch;
                 firstFrameEvent = firstFrameWritten;
                 path = outputPath;
+                // Request shutdown before waiting, but retain worker-owned resources
+                // until the thread has actually terminated.
+                isRecording = false;
             }
 
-            if (firstFrameEvent != null && !firstFrameEvent.IsSet)
-                firstFrameEvent.Wait(750);
-
-            lock (recordingLock)
+            if (captureThread != null && captureThread.IsAlive && !captureThread.Join(90000))
             {
-                isRecording = false;
-                recordingThread = null;
-                recordingStopwatch = null;
-                firstFrameWritten = null;
+                Logger.Log("Capture thread did not finalize within timeout; keeping its resources alive.");
+                throw new TimeoutException("Capture thread did not stop within 90 seconds.");
             }
 
             TimeSpan requestedDuration = stopwatch != null ? stopwatch.Elapsed : TimeSpan.Zero;
             if (stopwatch != null)
                 stopwatch.Stop();
-
-            if (captureThread != null && captureThread.IsAlive && !captureThread.Join(90000))
-            {
-                Logger.Log("Capture thread did not finalize within timeout; keeping its resources alive.");
-                // The capture worker may still access frameBuffer and firstFrameWritten.
-                // Do not dispose or clear them while the worker is running.
-                throw new TimeoutException("Capture thread did not stop within 90 seconds.");
-            }
 
             Exception error;
             int written;
@@ -128,13 +118,16 @@ namespace RScreenRec
             {
                 error = recordingError;
                 written = framesWritten;
+                recordingThread = null;
+                recordingStopwatch = null;
+                firstFrameWritten = null;
                 frameBuffer = null;
             }
 
             if (firstFrameEvent != null)
                 firstFrameEvent.Dispose();
 
-            long size = File.Exists(path) ? new FileInfo(path).Length : 0;
+            long size = !string.IsNullOrEmpty(path) && File.Exists(path) ? new FileInfo(path).Length : 0;
             Logger.Log(string.Format("Recording stopped. RequestedDuration={0}, Frames={1}, Size={2}, Output={3}",
                 requestedDuration, written, size, path));
 
