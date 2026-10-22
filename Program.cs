@@ -60,16 +60,18 @@ namespace RScreenRec
                     stopEvent.Reset();
                     TryDeleteStopRequest();
 
-                    // Keep normal launch behavior unchanged. Window mode is opt-in.
-                    // Selection is intentionally not started until a dedicated capture
-                    // backend is available; falling back silently would record the desktop.
+                    IntPtr selectedWindow = IntPtr.Zero;
                     if (windowSelectionRequested)
                     {
-                        IntPtr selectedWindow = WindowPicker.SelectWindow();
+                        DialogResult choice = MessageBox.Show(
+                            "Experimental window capture uses PrintWindow, not Windows Graphics Capture. " +
+                            "Some apps may render black or incomplete frames; minimizing the window stops recording. " +
+                            "Other windows are never used as a fallback. Continue?",
+                            "RScreenRec - Experimental window capture",
+                            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        if (choice != DialogResult.Yes) return;
+                        selectedWindow = WindowPicker.SelectWindow();
                         if (selectedWindow == IntPtr.Zero) return;
-                        Logger.Log("Window selected for future window capture mode. Handle=" + selectedWindow);
-                        MessageBox.Show("Window selected. Window capture is not yet implemented in this build. No recording has started.", "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        return;
                     }
 
                     // Get the monitor under the cursor
@@ -93,7 +95,10 @@ namespace RScreenRec
                     var recorder = new ScreenRecorder();
                     try
                     {
-                        recorder.StartRecording(bounds, outputPath);
+                        if (selectedWindow == IntPtr.Zero)
+                            recorder.StartRecording(bounds, outputPath);
+                        else
+                            recorder.StartWindowRecording(selectedWindow, outputPath);
                         Logger.Log(string.Format("Startup ready in {0} ms. Output={1}",
                             startupStopwatch.ElapsedMilliseconds,
                             outputPath));
@@ -105,8 +110,10 @@ namespace RScreenRec
                         return;
                     }
 
-                    OverlayHost touchOverlay = OverlayHost.Start("TouchOverlay", () => new TouchOverlayForm(bounds));
-                    OverlayHost recordingOverlay = OverlayHost.Start("RecordingOverlay", () => new RecordingOverlayForm(bounds));
+                    OverlayHost touchOverlay = selectedWindow == IntPtr.Zero
+                        ? OverlayHost.Start("TouchOverlay", () => new TouchOverlayForm(bounds)) : null;
+                    OverlayHost recordingOverlay = selectedWindow == IntPtr.Zero
+                        ? OverlayHost.Start("RecordingOverlay", () => new RecordingOverlayForm(bounds)) : null;
 
                     // Wait until stop is requested or recording ends
                     bool stopRequested = false;
@@ -122,8 +129,8 @@ namespace RScreenRec
                     if (stopRequested)
                     {
                         Logger.Log("Stop request detected; closing overlays immediately.");
-                        recordingOverlay.CloseNow();
-                        touchOverlay.CloseNow();
+                        if (recordingOverlay != null) recordingOverlay.CloseNow();
+                        if (touchOverlay != null) touchOverlay.CloseNow();
                     }
 
                     try
@@ -136,8 +143,8 @@ namespace RScreenRec
                     }
                     stopEvent.Reset();
                     TryDeleteStopRequest();
-                    recordingOverlay.Dispose();
-                    touchOverlay.Dispose();
+                    if (recordingOverlay != null) recordingOverlay.Dispose();
+                    if (touchOverlay != null) touchOverlay.Dispose();
                 }
             }
         }
