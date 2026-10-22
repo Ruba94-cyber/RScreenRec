@@ -192,7 +192,7 @@ namespace RScreenRec
 
                         graphics.CopyFromScreen(captureBounds.X, captureBounds.Y, 0, 0, captureBounds.Size, CopyPixelOperation.SourceCopy);
                         DrawMousePointer(graphics, captureBounds, dpiScale);
-                        DrawTouchPointers(graphics, dpiScale);
+                        DrawTouchPointers(graphics, captureBounds, dpiScale);
 
                         byte[] frame = BitmapToRgb32TopDownPadded(bitmap, outputWidth, outputHeight);
                         WriteFrame(writer, frame, frame.Length, frameIndex, ref firstFrameSignaled);
@@ -292,7 +292,7 @@ namespace RScreenRec
             }
         }
 
-        private static void DrawTouchPointers(Graphics graphics, float dpiScale)
+        private static void DrawTouchPointers(Graphics graphics, Rectangle captureBounds, float dpiScale)
         {
             Point[] touchPoints = TouchOverlayForm.GetActiveTouchPointsSnapshot();
             if (touchPoints.Length == 0)
@@ -303,7 +303,11 @@ namespace RScreenRec
             int borderWidth = Math.Max(1, DpiHelper.ScaleValue(3, dpiScale));
             foreach (Point point in touchPoints)
             {
-                Rectangle rect = new Rectangle(point.X - radius, point.Y - radius, diameter, diameter);
+                int localX = point.X - captureBounds.X;
+                int localY = point.Y - captureBounds.Y;
+                if (localX < 0 || localY < 0 || localX >= captureBounds.Width || localY >= captureBounds.Height)
+                    continue;
+                Rectangle rect = new Rectangle(localX - radius, localY - radius, diameter, diameter);
                 using (Pen border = new Pen(Color.White, borderWidth))
                 {
                     graphics.FillEllipse(MousePointerBrush, rect);
