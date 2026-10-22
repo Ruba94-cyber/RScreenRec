@@ -19,6 +19,7 @@ namespace RScreenRec
         private bool finalized;
         private bool mediaFoundationStarted;
         private bool comInitialized;
+        private bool writingStarted;
 
         public MediaFoundationMp4Writer(string outputPath, int width, int height, int fps, int bitrate)
         {
@@ -27,7 +28,31 @@ namespace RScreenRec
             this.fps = fps;
             frameDuration = HnsPerSecond / fps;
 
-            Initialize(outputPath, bitrate);
+            try
+            {
+                Initialize(outputPath, bitrate);
+            }
+            catch
+            {
+                // A failed constructor is never disposed by a using statement.
+                // Release any COM writer, Media Foundation and COM apartment here.
+                if (sinkWriter != null)
+                {
+                    ReleaseComObject(sinkWriter);
+                    sinkWriter = null;
+                }
+                if (mediaFoundationStarted)
+                {
+                    MFShutdown();
+                    mediaFoundationStarted = false;
+                }
+                if (comInitialized)
+                {
+                    CoUninitialize();
+                    comInitialized = false;
+                }
+                throw;
+            }
         }
 
         public void WriteFrame(byte[] frameData, int length, long frameIndex)
@@ -139,6 +164,7 @@ namespace RScreenRec
                 SetRatio(inputType, MediaFoundationGuids.MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
                 ThrowIfFailed(sinkWriter.SetInputMediaType(streamIndex, inputType, null), "IMFSinkWriter.SetInputMediaType");
                 ThrowIfFailed(sinkWriter.BeginWriting(), "IMFSinkWriter.BeginWriting");
+                writingStarted = true;
                 Logger.Log("Media Foundation writer ready.");
             }
             finally
@@ -160,7 +186,8 @@ namespace RScreenRec
 
             try
             {
-                ThrowIfFailed(sinkWriter.Finalize_(), "IMFSinkWriter.Finalize");
+                if (writingStarted)
+                    ThrowIfFailed(sinkWriter.Finalize_(), "IMFSinkWriter.Finalize");
             }
             finally
             {
