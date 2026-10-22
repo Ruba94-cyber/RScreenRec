@@ -8,7 +8,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $buildScript = Join-Path $PSScriptRoot 'build-check.ps1'
 & $buildScript
 
-$runtimeExe = Join-Path $root 'bin\Release\RScreenRec.exe'
+$runtimeExe = Join-Path $root 'bin\Release\RBG - RScreenRec.exe'
 if (-not (Test-Path -LiteralPath $runtimeExe -PathType Leaf)) { throw 'Release executable is missing.' }
 $ffmpeg = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
 $ffprobe = Get-Command ffprobe.exe -ErrorAction SilentlyContinue
@@ -27,18 +27,18 @@ $resolvedTestRoot = (Resolve-Path -LiteralPath $testRoot).Path
 $success = $false
 
 try {
-    Copy-Item -LiteralPath $runtimeExe -Destination (Join-Path $testRoot 'RScreenRec.exe')
+    Copy-Item -LiteralPath $runtimeExe -Destination (Join-Path $testRoot 'RBG - RScreenRec.exe')
     $windowHarness = Join-Path $testRoot 'WindowCaptureSmoke.exe'
     $executableWindowHarness = Join-Path $testRoot 'ExecutableWindowCaptureSmoke.exe'
     $longHarness = Join-Path $testRoot 'LongDurationWriterSmoke.exe'
     $targetHarness = Join-Path $testRoot 'SyntheticCaptureTarget.exe'
     & $compiler /nologo /target:winexe "/out:$targetHarness" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\SyntheticCaptureTarget.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the synthetic window target.' }
-    & $compiler /nologo /target:exe "/out:$windowHarness" "/reference:$(Join-Path $testRoot 'RScreenRec.exe')" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\WindowCaptureSmoke.cs')
+    & $compiler /nologo /target:exe "/out:$windowHarness" "/reference:$(Join-Path $testRoot 'RBG - RScreenRec.exe')" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\WindowCaptureSmoke.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the selected-window smoke harness.' }
     & $compiler /nologo /target:exe "/out:$executableWindowHarness" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\ExecutableWindowCaptureSmoke.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the actual-executable window-capture harness.' }
-    & $compiler /nologo /target:exe "/out:$longHarness" "/reference:$(Join-Path $testRoot 'RScreenRec.exe')" (Join-Path $root 'tests\LongDurationWriterSmoke.cs')
+    & $compiler /nologo /target:exe "/out:$longHarness" "/reference:$(Join-Path $testRoot 'RBG - RScreenRec.exe')" (Join-Path $root 'tests\LongDurationWriterSmoke.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the long-duration writer harness.' }
 
     $captureCases = @(
@@ -137,7 +137,7 @@ try {
 
     $executableOutput = Join-Path $testRoot 'actual-executable-output'
     New-Item -ItemType Directory -Path $executableOutput | Out-Null
-    $executableOutputText = & $executableWindowHarness (Join-Path $testRoot 'RScreenRec.exe') $executableOutput 671 377 2>&1
+    $executableOutputText = & $executableWindowHarness (Join-Path $testRoot 'RBG - RScreenRec.exe') $executableOutput 671 377 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Actual RScreenRec executable Shift/window capture failed: $($executableOutputText -join ' ')" }
     if (-not ($executableOutputText -join ' ').Contains('shift_picker=seen_with_shift_held') -or
         -not ($executableOutputText -join ' ').Contains('occlusion_and_resume=ok')) {

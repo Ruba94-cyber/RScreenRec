@@ -1,4 +1,4 @@
-name: Windows build and release candidate
+name: Windows build and release package
 
 on:
   pull_request:
@@ -15,20 +15,20 @@ jobs:
       - name: Validate PowerShell scripts
         shell: pwsh
         run: |
-          foreach ($path in @('scripts\build-check.ps1', 'scripts\test-windows-smoke.ps1', 'scripts\Package-ReleaseCandidate.ps1')) {
+          foreach ($path in @('scripts\build-check.ps1', 'scripts\test-windows-smoke.ps1', 'scripts\Package-Release.ps1')) {
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
             if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$path`: $($_.Message)" }; exit 1 }
           }
-      - name: Build and package Release x64 candidate
+      - name: Build and package Release x64
         shell: pwsh
         run: |
-          & .\scripts\Package-ReleaseCandidate.ps1
+          & .\scripts\Package-Release.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
-          name: RScreenRec-1.2.0-rc.1-windows-x64
-          path: release-candidates/*
+          name: RBG-RScreenRec-1.2.0-windows-x64
+          path: release/*
           if-no-files-found: error
           retention-days: 14

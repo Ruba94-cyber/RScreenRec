@@ -6,14 +6,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $root 'release-candidates'
+    $OutputDirectory = Join-Path $root 'release'
 }
 & (Join-Path $PSScriptRoot 'build-check.ps1')
 if ($LASTEXITCODE -ne 0) { throw "Release x64 build check failed (exit $LASTEXITCODE)." }
 
-$exe = Join-Path $root 'bin\Release\RScreenRec.exe'
+$exe = Join-Path $root 'bin\Release\RBG - RScreenRec.exe'
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Release executable is missing: $exe" }
-$version = '1.2.0-rc.1'
+$version = '1.2.0'
 $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
 if ($info.FileVersion -ne '1.2.0.0' -or $info.ProductVersion -ne $version) {
     throw "Unexpected executable version metadata: file=$($info.FileVersion), product=$($info.ProductVersion)"
@@ -28,13 +28,13 @@ $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
 $runId = [Guid]::NewGuid().ToString('N')
-$stage = Join-Path $tempRoot ('RScreenRec-RC-' + $runId)
-$archiveTemp = Join-Path $tempRoot ("RScreenRec-$runId.zip")
-$archiveName = "RScreenRec-$version-windows-x64.zip"
+$stage = Join-Path $tempRoot ('RBG-RScreenRec-Release-' + $runId)
+$archiveTemp = Join-Path $tempRoot ("RBG-RScreenRec-$runId.zip")
+$archiveName = "RBG-RScreenRec-$version-windows-x64.zip"
 New-Item -ItemType Directory -Path $stage | Out-Null
 
 try {
-    Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'RScreenRec.exe')
+    Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'RBG - RScreenRec.exe')
     foreach ($name in @('README.md', 'CHANGELOG.md', 'LICENSE')) {
         $source = Join-Path $root $name
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required release file is missing: $source" }

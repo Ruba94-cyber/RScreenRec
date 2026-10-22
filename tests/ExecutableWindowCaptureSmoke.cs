@@ -77,7 +77,7 @@ internal static class ExecutableWindowCaptureSmoke
     {
         if (args.Length != 4)
         {
-            Console.Error.WriteLine("Usage: ExecutableWindowCaptureSmoke <RScreenRec.exe> <output-directory> <width> <height>");
+            Console.Error.WriteLine("Usage: ExecutableWindowCaptureSmoke <RBG - RScreenRec.exe> <output-directory> <width> <height>");
             return 2;
         }
 

@@ -20,7 +20,7 @@ Write-Host "Building: $project"
 & $msbuild $project /t:Rebuild /restore /p:Configuration=Release /p:Platform=AnyCPU /p:PlatformTarget=x64 /p:Prefer32Bit=false /verbosity:minimal
 if ($LASTEXITCODE -ne 0) { throw "MSBuild failed (exit $LASTEXITCODE)." }
 
-$exe = Join-Path $root 'bin\Release\RScreenRec.exe'
+$exe = Join-Path $root 'bin\Release\RBG - RScreenRec.exe'
 if (-not (Test-Path $exe)) { throw 'Build completed without the expected executable.' }
 Write-Host "Release x64 build OK: $exe"
 Write-Host ''

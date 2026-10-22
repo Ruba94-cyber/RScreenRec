@@ -1,8 +1,10 @@
-# RScreenRec - Advanced Screen Recording Tool
+# RBG - RScreenRec - Advanced Screen Recording Tool
 
 A C# desktop application for advanced screen recording with visual overlays and touch input support.
 
 Author: Paolo Rubagotti.
+
+Windows release packages are unsigned because no Authenticode certificate is available. The executable metadata identifies Paolo Rubagotti and `paolo.ruba.1913@gmail.com`; Windows may show an unknown publisher notice.
 
 ## Features
 
@@ -38,7 +40,7 @@ Author: Paolo Rubagotti.
 
 ### Quick Start
 ```bash
-RScreenRec.exe
+"RBG - RScreenRec.exe"
 ```
 
 ### How it works
@@ -48,10 +50,14 @@ RScreenRec.exe
 
 ### Recording a window
 
-1. Hold **Shift** while launching RScreenRec.
+1. Hold **Shift** while launching RBG - RScreenRec.
 2. Select a visible window from the list.
 3. Continue using other applications; window mode captures only the selected window and does not use desktop capture as a fallback.
-4. Launch RScreenRec again to stop and finalize the MP4.
+4. Launch `RBG - RScreenRec.exe` again to stop and finalize the MP4.
+
+### Release download
+
+Download `RBG-RScreenRec-1.2.0-windows-x64.zip` from GitHub Releases, extract the archive, then run `RBG - RScreenRec.exe`.
 
 Windows Graphics Capture is used when available. If it cannot be initialized, RScreenRec warns before using PrintWindow compatibility capture; some GPU-rendered or protected windows may then appear blank or incomplete. When a target is minimized, Windows may stop rendering it. RScreenRec keeps the last captured image in the video timeline and resumes with new frames after the window is restored; this is not live capture while minimized.
 
@@ -157,10 +163,10 @@ RScreenRec/
 
 ### Build Commands
 ```bash
-# Debug build (produces RScreenRec.exe in bin\\Debug)
+# Debug build (produces `RBG - RScreenRec.exe` in `bin\\Debug`)
 msbuild RScreenRec.csproj /p:Configuration=Debug
 
-# Release build (produces RScreenRec.exe in bin\\Release)
+# Release build (produces `RBG - RScreenRec.exe` in `bin\\Release`)
 msbuild RScreenRec.csproj /p:Configuration=Release
 ```
 

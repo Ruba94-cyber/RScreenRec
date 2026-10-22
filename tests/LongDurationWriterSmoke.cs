@@ -21,7 +21,7 @@ internal static class LongDurationWriterSmoke
             string output = Path.GetFullPath(args[0]);
             Directory.CreateDirectory(Path.GetDirectoryName(output));
 
-            string runtimePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "RScreenRec.exe");
+            string runtimePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "RBG - RScreenRec.exe");
             Assembly product = Assembly.LoadFrom(runtimePath);
             Type writerType = product.GetType("RScreenRec.MediaFoundationMp4Writer", true);
             ConstructorInfo constructor = writerType.GetConstructor(

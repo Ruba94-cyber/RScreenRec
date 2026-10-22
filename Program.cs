@@ -245,7 +245,8 @@ namespace RScreenRec
             try
             {
                 int currentId = Process.GetCurrentProcess().Id;
-                foreach (Process process in Process.GetProcessesByName("RScreenRec"))
+                string currentProcessName = Process.GetCurrentProcess().ProcessName;
+                foreach (Process process in Process.GetProcessesByName(currentProcessName))
                 {
                     using (process)
                     {
