@@ -13,6 +13,7 @@ namespace RScreenRec
         private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
         [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
@@ -27,7 +28,7 @@ namespace RScreenRec
             var choices = new List<WindowChoice>();
             EnumWindows((hwnd, unused) =>
             {
-                if (!IsWindowVisible(hwnd)) return true;
+                if (!IsWindowVisible(hwnd) || IsIconic(hwnd)) return true;
                 // Avoid owned tooltips, popups, and non-root helper windows.
                 if (GetWindow(hwnd, GW_OWNER) != IntPtr.Zero || GetAncestor(hwnd, GA_ROOT) != hwnd) return true;
                 int length = GetWindowTextLength(hwnd);
@@ -71,7 +72,8 @@ namespace RScreenRec
                 list.DoubleClick += (sender, args) => { if (list.SelectedItem != null) dialog.DialogResult = DialogResult.OK; };
                 if (dialog.ShowDialog() != DialogResult.OK || list.SelectedItem == null) return IntPtr.Zero;
                 var selected = (WindowChoice)list.SelectedItem;
-                return IsWindow(selected.Handle) && IsWindowVisible(selected.Handle) ? selected.Handle : IntPtr.Zero;
+                return IsWindow(selected.Handle) && IsWindowVisible(selected.Handle) && !IsIconic(selected.Handle)
+                    ? selected.Handle : IntPtr.Zero;
             }
         }
 
