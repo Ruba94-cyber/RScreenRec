@@ -180,14 +180,19 @@ namespace RScreenRec
                 Console.WriteLine(string.Format("Warning: could not signal stop: {0}", ex.Message));
             }
 
-            try
+            // The file is a fallback only. Writing it after a successful event
+            // signal could leave a stale request that stops a later recording.
+            if (!signaled)
             {
-                File.WriteAllText(StopRequestPath, DateTime.UtcNow.ToString("O"));
-                signaled = true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Log("Could not write stop request file.", ex);
+                try
+                {
+                    File.WriteAllText(StopRequestPath, DateTime.UtcNow.ToString("O"));
+                    signaled = true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log("Could not write stop request file.", ex);
+                }
             }
 
             Logger.Log(string.Format("Stop signal requested. Success={0}", signaled));
