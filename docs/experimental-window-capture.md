@@ -1,60 +1,24 @@
-# Experimental selected-window recording
+# Selected-window recording
 
-This branch includes an **opt-in compatibility implementation**, not yet the
-planned Windows Graphics Capture (WGC) backend.
+Selected-window recording is opt-in and leaves the normal monitor workflow unchanged.
 
-## How to try it
+## Try it
 
 1. Launch RScreenRec while holding **Shift**.
-2. Read and accept the experimental-capture warning.
-3. Select a visible, non-minimized window.
-4. Launch RScreenRec again to stop the recording, as in monitor mode.
+2. Select a visible, non-minimized window.
+3. Use other applications while recording. Window mode captures the selected HWND only and does not include other desktop windows.
+4. Launch RScreenRec again to stop and finalize the MP4.
 
-The window capture implementation requests frames from the selected HWND using
-`PrintWindow(PW_RENDERFULLCONTENT)`. It does **not** use screen-region capture
-as a fallback, and does not create monitor-wide touch/REC overlays.
+WGC is the preferred source on Windows 10 version 1803 or later. If WGC cannot initialize, the application displays a warning and tries PrintWindow. PrintWindow may return black or incomplete content for GPU-rendered, protected, layered, and special windows. Neither backend silently switches to a desktop recording.
 
-## Known limitations
+## Minimize and restore
 
-- **Not tested on Windows yet.** Compilation and real application testing are
-  required before release.
-- Some hardware-accelerated, protected, layered, or special windows return black,
-  stale, or incomplete frames even if PrintWindow reports success.
-- A minimized window keeps the MP4 timeline running with the last captured frame.\n  Live content updates while minimized are not guaranteed; capture resumes on restore.
-- The output resolution is fixed at the size selected at startup. Resizing the
-  target is handled by fitting its current image inside the original video size,
-  preserving aspect ratio and adding black bars when necessary. Very large
-  windows are rejected to bound temporary memory use.
-- Cursor and touch annotations are disabled for window-only capture to avoid
-  incorrect coordinates and overlay contamination.
-- PrintWindow can block while the target window renders. Stop may take longer
-  for an unresponsive target.
-- Notifications and other windows are not captured via desktop pixels, but the
-  target app itself controls what PrintWindow renders.
-- This compatibility backend does **not** meet the full reliability requirements
-  for independent GPU-backed capture. WGC remains the intended implementation.
+Windows may stop rendering a minimized window. RScreenRec holds its last captured frame in the 30 FPS timeline, counts those repeated samples separately, and resumes with new content after restore. This behavior does not provide live updates while minimized. Restore the target whenever live content needs to be recorded.
 
-## Windows test matrix
+## Validation status
 
-- Ordinary Win32 window, foreground and covered by another application
-- Hardware-accelerated application and browser
-- Move target between displays with different DPI settings
-- Resize, minimize, restore, and close target while recording
-- Second-launch stop, repeated starts, encoder failure, and file integrity
-- Confirm unrelated notifications and windows never appear in recorded frames
+The Windows smoke run used synthetic WinForms windows at odd landscape, portrait, and panoramic dimensions. It verified WGC capture, absence of an unrelated magenta occluder, resize and move handling, minimize/restore behavior, even-dimension H.264 output, 30 FPS metadata, and full-file decoding. The actual executable also completed monitor-mode start/second-launch stop against a synthetic full-screen backdrop: the finalized file was 1,283,304 bytes, 2560x1600, 30 FPS, 130 frames over 4.333 seconds, decoded without errors, and left no RScreenRec process running. A separate monitor-source smoke capture and an accelerated 3601-second writer timeline also decoded successfully.
 
-Do not merge this feature into the default release until the behavior is
-verified and the limitations are acceptable.
+The automated harness opens the real window-picker dialog and selects a separate synthetic target process, then exercises WGC capture and MP4 validation. A separate close test closes the selected target during capture; the source-close error was reported, the MP4 finalized at 30 FPS with 67 frames over 2.233 seconds, and full decode succeeded. The packaged executable's Shift-key launch path has not yet been verified end-to-end. Browser, hardware-accelerated, protected-content, mixed-DPI multi-monitor, real notification, and real one-hour interactive recording checks also remain outstanding.
 
-## Build and acceptance
-
-Run `scripts/build-check.ps1` on a Windows development machine with
-Visual Studio Build Tools and the .NET Framework 4.8 targeting pack.
-
-**Current status:** Source changes have been committed, but no Windows build,
-automated UI test, or actual MP4 playback test has been executed in this
-development environment. The experimental feature must remain in a draft PR.
-
-**Release blockers:** A verified Windows build, capture/playback validation,
-GPU-backed app coverage, and an implementation using Windows Graphics Capture
-for broader compatibility. No claim is made that minimized apps continue to\nproduce live frames.
+Browser, hardware-accelerated, protected-content, mixed-DPI multi-monitor, real notification, and real one-hour interactive recording checks have not been completed. Keep the feature in its Draft PR until the target-app and endurance checks pass. See [the implementation and test plan](window-capture-plan.md) for details.

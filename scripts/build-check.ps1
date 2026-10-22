@@ -1,4 +1,4 @@
-# Build and validate the experimental recording branch on Windows.
+# Build the Release executable and print the Windows integration-check list.
 # Run from a PowerShell terminal with Visual Studio Build Tools installed.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -26,10 +26,10 @@ Write-Host "Build OK: $exe"
 Write-Host ''
 Write-Host 'Manual checks required:'
 Write-Host '1. Launch normally, record the monitor, launch again to stop, play the MP4.'
-Write-Host '2. Hold Shift when launching, accept the warning, select a window.'
+Write-Host '2. Hold Shift when launching, select a window, and verify WGC or the PrintWindow compatibility warning.'
 Write-Host '3. Cover the target with an unrelated window and display a notification.'
-Write-Host '4. Resize the target and verify aspect ratio; launch again to stop.'
+Write-Host '4. Resize and move the target; verify aspect ratio and resume capture after restoring it.'
 Write-Host '5. Repeat with a GPU-accelerated app; check for black/stale frames.'
-Write-Host '6. Minimize target: recording should hold the last frame; restore and verify updates resume.'
+Write-Host '6. Minimize the target: the last frame is held, not live; restore it and verify updates resume.'
 Write-Host '7. Close target: verify graceful failure and MP4 integrity.'
-Write-Host '7. Inspect %TEMP%\screenrec.log for errors.'
+Write-Host '8. Inspect %TEMP%\screenrec.log for errors and frame counts.'

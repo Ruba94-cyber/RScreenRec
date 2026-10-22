@@ -9,9 +9,9 @@ Author: Paolo Rubagotti.
 ### 🎥 Screen Recording
 - **Multi-monitor aware**: Automatically records the monitor under the mouse cursor.
 - **Screen-format safe**: Supports standard, ultrawide, portrait, 16:10, 4:3, and odd pixel dimensions without cropping.
-- **Lightweight high quality capture**: 30 FPS MP4 recording with native Windows H.264 encoding tuned for small screen-recording files.
-- **Small files**: Around 3-4 MB/minute on a 1920x1200 desktop in typical screen-recording use.
-- **DPI aware**: Optimized for high-resolution displays (e.g., Panasonic FG-Z2).
+- **Compact H.264 encoding**: 30 FPS with a constant-quality profile tuned for readable screen text and controlled file size.
+- **Variable file size**: Output depends on resolution and how much the screen changes. In 1920x1080 synthetic tests, a UI sample averaged about 3.85 MB/minute (roughly 231 MB/hour when scaled linearly); a deliberately high-motion sample averaged about 21.46 MB/minute (roughly 1.29 GB/hour). These are sample-based estimates, not file-size limits.
+- **DPI aware**: Handles high-resolution displays and mixed-DPI coordinate spaces.
 - **Portable single executable**: No FFmpeg, codecs, or helper binaries are shipped beside the app.
 - **Automatic file management**: Timestamped filenames avoid slow startup scans.
 
@@ -31,6 +31,7 @@ Author: Paolo Rubagotti.
 - **Operating System**: Windows 7 or later
 - **.NET Framework**: 4.8
 - **Hardware**: DirectX-compatible graphics adapter for screen capture
+- **Window capture**: Windows Graphics Capture is the preferred backend on Windows 10 version 1803 or later. Older or unsupported configurations may use the PrintWindow compatibility backend, which can return incomplete frames.
 - **Touch**: Optional Windows Touch support for the touch overlay
 
 ## Usage
@@ -44,6 +45,21 @@ RScreenRec.exe
 1. **First launch**: Detects the current monitor and starts recording immediately.
 2. **Second launch**: Stops the current recording if one is running.
 3. **Output files**: Videos are saved to `%USERPROFILE%\Videos\Captures\`.
+
+### Recording a window
+
+1. Hold **Shift** while launching RScreenRec.
+2. Select a visible window from the list.
+3. Continue using other applications; window mode captures only the selected window and does not use desktop capture as a fallback.
+4. Launch RScreenRec again to stop and finalize the MP4.
+
+Windows Graphics Capture is used when available. If it cannot be initialized, RScreenRec warns before using PrintWindow compatibility capture; some GPU-rendered or protected windows may then appear blank or incomplete. When a target is minimized, Windows may stop rendering it. RScreenRec keeps the last captured image in the video timeline and resumes with new frames after the window is restored; this is not live capture while minimized.
+
+The H.264 profile preserves the 30 FPS timeline and does not deliberately reduce the frame rate to shrink files. Repeated samples hold the last complete image when the capture source has no new frame. Quality-based encoding has no strict file-size cap, so rapidly changing full-screen content can produce much larger files than a mostly static desktop. A more aggressive test setting produced a UI sample about one-third smaller than quality 35, but its SSIM against quality 35 fell to 0.963 and thin grid lines disappeared; quality 35 remains the default to protect small text and details. A synthetic 3601-second, 30 FPS writer run finalized and decoded successfully; this validates long MP4 timelines, not a 60-minute interactive capture session.
+
+### Windows smoke tests
+
+Run `scripts/test-windows-smoke.ps1` in an interactive Windows session. It builds the Release app, automates the window picker against a separate synthetic process, exercises odd-landscape, portrait, and panoramic WGC capture, checks occlusion, resize, minimize/restore, selected-window closure, and validates every MP4 with FFmpeg. It also writes a synthetic timeline longer than one hour. The test runner requires the .NET Framework C# compiler plus `ffmpeg.exe` and `ffprobe.exe` on `PATH`; these are development tools and are not shipped with RScreenRec. Successful runs remove their temporary media, while failed runs retain the artifacts for diagnosis.
 
 ### File Naming
 Files follow the pattern `rec_[timestamp].mp4`:
@@ -70,7 +86,11 @@ Example: `rec_2026-06-04_16-22-40-234.mp4`
 #### `MediaFoundationMp4Writer.cs`
 - Thin COM/PInvoke wrapper around Windows Media Foundation.
 - Writes H.264 video into an MP4 container.
-- Uses explicit frame timestamps and durations for normal playback speed.
+- Uses a constant-quality H.264 profile and explicit timestamps and durations for normal playback speed and long recordings.
+
+#### `FrameSources.cs`
+- Uses Windows Graphics Capture for selected windows when available, with PrintWindow compatibility capture if WGC initialization fails.
+- Keeps selected-window frames independent of other desktop windows; the compatibility backend may not render every GPU or protected surface correctly.
 
 #### `RecordingOverlayForm.cs`
 - Transparent overlay indicating active recording.
@@ -85,9 +105,9 @@ Example: `rec_2026-06-04_16-22-40-234.mp4`
 ## Advanced Configuration
 
 ### Performance Tuning
-- **FPS**: Adjustable in `ScreenRecorder.cs` around line 21.
-- **Quality/size**: Uses compact screen-recording bitrate presets in `ScreenRecorder.cs`.
-- **Buffer size**: Automatically determined based on resolution.
+- **FPS**: 30 FPS, configured in `ScreenRecorder.cs`.
+- **Quality/size**: H.264 constant-quality profile 35; lower values can reduce detail, and actual file size varies with scene motion.
+- **Buffer size**: Automatically determined from the selected capture dimensions.
 
 ### Overlay Customization
 - **Indicator position**: Configurable in `RecordingOverlayForm.cs` near lines 19-20.

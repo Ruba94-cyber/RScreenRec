@@ -1,38 +1,30 @@
-# Window capture implementation and review
+# Selected-window capture
 
-## Scope
-- Preserve normal launch: first invocation records the cursor monitor; second invocation stops.
-- Holding Shift during first invocation opts into window selection.
-- Capture only the selected window, without desktop notifications or unrelated applications.
-- Allow users to restore and interact with the target window at any time.
-- Never claim live minimized capture unless validated for the target application.
-- No application-specific identifiers or behaviors.
+## Behavior
 
-## Current state
-The Shift modifier is detected in Program.cs. Until a separate window-capture backend and picker exist, Shift mode exits with an explicit message instead of silently recording the desktop.
+- Normal launch still starts monitor recording; a second launch stops and finalizes it.
+- Holding Shift opens a picker of visible top-level windows. Canceling the picker does not start recording.
+- Windows Graphics Capture (WGC) is the preferred selected-window source. If WGC cannot initialize, RScreenRec warns and attempts PrintWindow compatibility capture.
+- Window mode does not draw the monitor-wide recording or touch overlays and never falls back to desktop pixels.
+- The output keeps the selected window's startup dimensions. Resized frames are fitted into that canvas while preserving aspect ratio.
 
-## Implementation tasks
-1. Introduce an abstract frame source (screen and window) while retaining the existing Media Foundation writer.
-2. Build a nonintrusive window picker and reject invalid, protected, or closed windows.
-3. Use Windows Graphics Capture on supported Windows versions, with explicit unsupported-OS handling. The current README claims Windows 7 compatibility for ordinary recording.
-4. Handle target window close, resize, DPI changes, multi-monitor movement, and capture interruption.
-5. Detect lack of fresh frames while minimized; report the limitation instead of presenting repeated frames as live activity.
-6. Verify pointer/touch overlays are positioned in window-relative coordinates.
-7. Preserve second-launch stop semantics, recording indicator, file naming, and single-executable packaging.
-8. Add automated tests and Windows integration tests.
+## Minimized windows and frame timing
 
-## Static-review findings to investigate
-- ScreenRecorder.StopRecording clears recording state and frame buffer after a 90-second Join timeout even if the capture thread remains alive; ownership and disposal must be made safe.
-- StartRecording returns before the recording thread writes its first frame; startup errors can be asynchronous.
-- The stop-request file uses a global temporary filename and can race across processes or user sessions.
-- The catch-up loop repeats the last frame; this is valid for timing but must not be confused with live target updates.
-- TouchOverlayForm converts screen touch coordinates to client coordinates, then publishes those client points; ScreenRecorder.DrawTouchPointers uses them without a corresponding screen-to-capture transform.
-- Verify overlays, stop event cleanup, DPI fallbacks, and encoding finalization under failure conditions.
+Windows may stop rendering a minimized window. RScreenRec keeps the last complete image in the MP4 timeline while the source is minimized; repeated output frames are counted separately from updated source frames. This is a freeze, not live capture. New frames resume after the window is restored. Closing the target or losing the WGC source stops capture with an error and attempts to finalize the MP4.
 
-## Acceptance tests
-- Normal first/second launch behavior unchanged.
-- Shift launches window selection without writing desktop pixels.
-- Switching to unrelated apps and receiving notifications does not affect captured window content.
-- Target restoration and focus work while capture continues.
-- Minimized behavior is explicitly verified and accurately reported.
-- No leaked capture resources after closing the target or stopping recording.
+## Backend limits
+
+- WGC requires Windows 10 version 1803 or later. Behavior on Windows versions and hardware not tested remains unverified.
+- PrintWindow is a compatibility path. GPU-rendered, protected, layered, or unusual applications may return black or incomplete content. A successful PrintWindow call alone does not prove the pixels are correct.
+- The Windows build used for this branch selected WGC for a synthetic WinForms window. Browser, protected-content, and hardware-accelerated application coverage remains outstanding.
+- WGC capture remains independent of unrelated windows in the synthetic covered-window test. Notifications, multi-monitor mixed-DPI movement, and real GPU applications still require validation on target systems.
+
+## Windows smoke results
+
+On the available Windows environment, synthetic WGC recordings were produced at 671x377, 377x671, and 1001x311. H.264 output padded odd dimensions to even sizes, retained 30 FPS, and decoded successfully. The 671x377 test covered the target with a magenta window, resized and moved it, minimized it, then restored it. The unrelated magenta content was absent; the last complete target frame was held while minimized; content resumed after restore. The resize transition was repeated after correcting a test-harness paint exception and after guarding the WGC frame-pool resize boundary against one partial surface.
+
+A separate monitor-source smoke test recorded synthetic desktop content at 671x377, finalized a 30 FPS MP4, and decoded successfully. A synthetic 3601-second writer run encoded 108,030 frames and decoded with a reported duration of 3601 seconds. This validates the writer's long timestamp timeline; it is not a real 60-minute interactive capture or a CPU/GPU endurance test.
+
+## Remaining release validation
+
+Before removing Draft status, test the picker and second-launch stop flow on target Windows versions; exercise browser and GPU-accelerated windows, target closure, cross-monitor DPI changes, notifications, and multiple start/stop cycles; and measure resource use during a real long recording. Keep the PR in Draft until those environment-dependent checks pass.
