@@ -86,7 +86,8 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Error creating output directory.", ex);
-                        Console.WriteLine(string.Format("Error creating output directory: {0}", ex.Message));
+                        MessageBox.Show("Cannot create the recording folder: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -106,7 +107,8 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Failed to start recording.", ex);
-                        Console.WriteLine(string.Format("Failed to start recording: {0}", ex.Message));
+                        MessageBox.Show("Recording could not start: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -140,6 +142,8 @@ namespace RScreenRec
                     catch (Exception ex)
                     {
                         Logger.Log("Failed to stop recording cleanly.", ex);
+                        MessageBox.Show("Recording ended with an error: " + ex.Message,
+                            "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                     stopEvent.Reset();
                     TryDeleteStopRequest();
