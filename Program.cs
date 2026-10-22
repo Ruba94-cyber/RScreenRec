@@ -65,8 +65,10 @@ namespace RScreenRec
                     // backend is available; falling back silently would record the desktop.
                     if (windowSelectionRequested)
                     {
-                        Logger.Log("Window capture requested with Shift, but the capture backend is not yet available.");
-                        MessageBox.Show("Window capture is not available in this build. Start without Shift to record the screen.", "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        IntPtr selectedWindow = WindowPicker.SelectWindow();
+                        if (selectedWindow == IntPtr.Zero) return;
+                        Logger.Log("Window selected for future window capture mode. Handle=" + selectedWindow);
+                        MessageBox.Show("Window selected. Window capture is not yet implemented in this build. No recording has started.", "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         return;
                     }
 
