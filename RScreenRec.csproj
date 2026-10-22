@@ -52,6 +52,7 @@
     <Compile Include="ScreenRecorder.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="WindowPicker.cs" />
+    <Compile Include="FrameSources.cs" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Icon_screenshotrecord.ico" />
