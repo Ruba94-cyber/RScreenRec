@@ -65,7 +65,41 @@ namespace RScreenRec
             recordingThread.IsBackground = true;
             recordingThread.Name = "ScreenCaptureMediaFoundation";
             recordingThread.Priority = ThreadPriority.AboveNormal;
-            recordingThread.Start();
+            try
+            {
+                recordingThread.Start();
+            }
+            catch
+            {
+                lock (recordingLock)
+                {
+                    isRecording = false;
+                    recordingThread = null;
+                    recordingStopwatch = null;
+                    frameBuffer = null;
+                    firstFrameWritten.Dispose();
+                    firstFrameWritten = null;
+                }
+                throw;
+            }
+
+            // Wait briefly for the worker to write its first frame. Do not report
+            // startup as successful if Media Foundation failed immediately.
+            ManualResetEventSlim startupEvent;
+            lock (recordingLock)
+                startupEvent = firstFrameWritten;
+            if (!startupEvent.Wait(3000))
+            {
+                Exception startupError;
+                lock (recordingLock)
+                    startupError = recordingError;
+                if (startupError != null || !IsRecording)
+                {
+                    StopRecording();
+                    throw new InvalidOperationException("Recording could not start.", startupError);
+                }
+                Logger.Log("First frame not ready after 3 seconds; capture continues.");
+            }
 
             int selectedBitrate = SelectBitrate(encodedWidth, encodedHeight);
             Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, Bitrate={11}, TargetMBPerMinute={12:F1}",
