@@ -14,6 +14,10 @@ namespace RScreenRec
         [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+        private const uint GW_OWNER = 4;
+        private const uint GA_ROOT = 2;
         [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr hwnd);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
@@ -24,6 +28,8 @@ namespace RScreenRec
             EnumWindows((hwnd, unused) =>
             {
                 if (!IsWindowVisible(hwnd)) return true;
+                // Avoid owned tooltips, popups, and non-root helper windows.
+                if (GetWindow(hwnd, GW_OWNER) != IntPtr.Zero || GetAncestor(hwnd, GA_ROOT) != hwnd) return true;
                 int length = GetWindowTextLength(hwnd);
                 if (length <= 0) return true;
                 var title = new StringBuilder(length + 1);
@@ -65,7 +71,7 @@ namespace RScreenRec
                 list.DoubleClick += (sender, args) => { if (list.SelectedItem != null) dialog.DialogResult = DialogResult.OK; };
                 if (dialog.ShowDialog() != DialogResult.OK || list.SelectedItem == null) return IntPtr.Zero;
                 var selected = (WindowChoice)list.SelectedItem;
-                return IsWindow(selected.Handle) ? selected.Handle : IntPtr.Zero;
+                return IsWindow(selected.Handle) && IsWindowVisible(selected.Handle) ? selected.Handle : IntPtr.Zero;
             }
         }
 
