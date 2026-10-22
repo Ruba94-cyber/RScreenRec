@@ -78,8 +78,9 @@ namespace RScreenRec
             if (windowBitmap.Width != width || windowBitmap.Height != height)
             {
                 Bitmap resized = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                windowBitmap.Dispose();
+                Bitmap previous = windowBitmap;
                 windowBitmap = resized;
+                previous.Dispose();
             }
 
             using (Graphics offscreen = Graphics.FromImage(windowBitmap))
