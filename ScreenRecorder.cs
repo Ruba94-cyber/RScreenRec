@@ -110,11 +110,20 @@ namespace RScreenRec
             if (startupError != null || !IsRecording)
             {
                 // StopRecording joins the worker and propagates encoder errors.
+                // If it returns normally, the worker ended without an error
+                // before recording was established.
                 StopRecording();
                 throw new InvalidOperationException("Recording stopped before its first frame.");
             }
             if (!firstFrameReady)
                 Logger.Log("First frame not ready after 3 seconds; capture continues.");
+            else if (!IsRecording)
+            {
+                // The first frame may have been written just before an error.
+                // Do not report startup success for a stopped worker.
+                StopRecording();
+                throw new InvalidOperationException("Recording stopped during startup.");
+            }
 
             int selectedBitrate = SelectBitrate(encodedWidth, encodedHeight);
             Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, Bitrate={11}, TargetMBPerMinute={12:F1}",
