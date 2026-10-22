@@ -44,8 +44,8 @@ namespace RScreenRec
             Stopwatch startupStopwatch = Stopwatch.StartNew();
             lock (recordingLock)
             {
-                if (isRecording)
-                    throw new InvalidOperationException("A recording session is already in progress.");
+                if (isRecording || recordingThread != null)
+                    throw new InvalidOperationException("A recording session is already in progress or has not been finalized.");
 
                 bounds = screenBounds;
                 this.outputPath = outputPath;
@@ -88,20 +88,18 @@ namespace RScreenRec
             ManualResetEventSlim startupEvent;
             lock (recordingLock)
                 startupEvent = firstFrameWritten;
-            if (!startupEvent.Wait(3000))
+            bool firstFrameReady = startupEvent.Wait(3000);
+            Exception startupError;
+            lock (recordingLock)
+                startupError = recordingError;
+            if (startupError != null || !IsRecording)
             {
-                Exception startupError;
-                lock (recordingLock)
-                    startupError = recordingError;
-                if (startupError != null || !IsRecording)
-                {
-                    // StopRecording joins the worker and may itself report the original
-                    // encoder failure. Preserve that exception rather than masking it.
-                    StopRecording();
-                    throw new InvalidOperationException("Recording stopped before its first frame.");
-                }
-                Logger.Log("First frame not ready after 3 seconds; capture continues.");
+                // StopRecording joins the worker and propagates encoder errors.
+                StopRecording();
+                throw new InvalidOperationException("Recording stopped before its first frame.");
             }
+            if (!firstFrameReady)
+                Logger.Log("First frame not ready after 3 seconds; capture continues.");
 
             int selectedBitrate = SelectBitrate(encodedWidth, encodedHeight);
             Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, Bitrate={11}, TargetMBPerMinute={12:F1}",
