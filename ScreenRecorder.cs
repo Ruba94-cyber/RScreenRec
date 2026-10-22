@@ -209,8 +209,9 @@ namespace RScreenRec
 
             try
             {
+                using (IFrameSource source = new DesktopFrameSource(captureBounds))
                 using (var writer = new MediaFoundationMp4Writer(path, outputWidth, outputHeight, FramesPerSecond, SelectBitrate(outputWidth, outputHeight)))
-                using (Bitmap bitmap = new Bitmap(captureBounds.Width, captureBounds.Height, PixelFormat.Format32bppArgb))
+                using (Bitmap bitmap = new Bitmap(source.FrameSize.Width, source.FrameSize.Height, PixelFormat.Format32bppArgb))
                 using (Graphics graphics = Graphics.FromImage(bitmap))
                 {
                     while (IsRecording)
@@ -219,7 +220,7 @@ namespace RScreenRec
                         if (!IsRecording)
                             break;
 
-                        graphics.CopyFromScreen(captureBounds.X, captureBounds.Y, 0, 0, captureBounds.Size, CopyPixelOperation.SourceCopy);
+                        source.CaptureFrame(graphics);
                         DrawMousePointer(graphics, captureBounds, dpiScale);
                         DrawTouchPointers(graphics, captureBounds, dpiScale);
 
