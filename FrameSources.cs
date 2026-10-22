@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -29,6 +30,7 @@ namespace RScreenRec
 
         private readonly IntPtr window;
         private readonly Size size;
+        private Bitmap windowBitmap;
         private const uint RenderFullContent = 2;
 
         internal PrintWindowFrameSource(IntPtr window)
@@ -42,12 +44,15 @@ namespace RScreenRec
                 throw new InvalidOperationException("Cannot determine the selected window dimensions.");
             this.window = window;
             size = new Size(rect.Right - rect.Left, rect.Bottom - rect.Top);
+            windowBitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
         }
 
         public Size FrameSize { get { return size; } }
 
         public void CaptureFrame(Graphics destination)
         {
+            if (destination == null)
+                throw new ArgumentNullException("destination");
             if (!IsWindow(window))
                 throw new InvalidOperationException("The selected window has been closed.");
             if (IsIconic(window))
@@ -57,19 +62,55 @@ namespace RScreenRec
             if (!GetWindowRect(window, out rect))
                 throw new InvalidOperationException("Cannot read the selected window bounds.");
 
-            IntPtr hdc = destination.GetHdc();
-            try
+            int width = rect.Right - rect.Left;
+            int height = rect.Bottom - rect.Top;
+            if (width <= 0 || height <= 0)
+                throw new InvalidOperationException("The selected window has invalid dimensions.");
+
+            // PrintWindow draws at the target's current dimensions. Capture to an
+            // appropriately sized off-screen bitmap, then fit it inside the
+            // original, fixed-size video frame. Never read desktop pixels.
+            if (windowBitmap.Width != width || windowBitmap.Height != height)
             {
-                if (!PrintWindow(window, hdc, RenderFullContent))
-                    throw new InvalidOperationException("The selected window does not support PrintWindow capture.");
+                Bitmap resized = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                windowBitmap.Dispose();
+                windowBitmap = resized;
             }
-            finally
+
+            using (Graphics offscreen = Graphics.FromImage(windowBitmap))
             {
-                destination.ReleaseHdc(hdc);
+                offscreen.Clear(Color.Black);
+                IntPtr hdc = offscreen.GetHdc();
+                try
+                {
+                    if (!PrintWindow(window, hdc, RenderFullContent))
+                        throw new InvalidOperationException("The selected window does not support PrintWindow capture.");
+                }
+                finally
+                {
+                    offscreen.ReleaseHdc(hdc);
+                }
             }
+
+            destination.Clear(Color.Black);
+            float scale = Math.Min(size.Width / (float)width, size.Height / (float)height);
+            int fittedWidth = Math.Max(1, (int)Math.Round(width * scale));
+            int fittedHeight = Math.Max(1, (int)Math.Round(height * scale));
+            int x = (size.Width - fittedWidth) / 2;
+            int y = (size.Height - fittedHeight) / 2;
+            destination.DrawImage(windowBitmap,
+                new Rectangle(x, y, fittedWidth, fittedHeight),
+                new Rectangle(0, 0, width, height), GraphicsUnit.Pixel);
         }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+            if (windowBitmap != null)
+            {
+                windowBitmap.Dispose();
+                windowBitmap = null;
+            }
+        }
     }
 
     internal sealed class DesktopFrameSource : IFrameSource
