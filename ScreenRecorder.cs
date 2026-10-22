@@ -61,13 +61,15 @@ namespace RScreenRec
                 isRecording = true;
             }
 
-            recordingThread = new Thread(RecordLoop);
-            recordingThread.IsBackground = true;
-            recordingThread.Name = "ScreenCaptureMediaFoundation";
-            recordingThread.Priority = ThreadPriority.AboveNormal;
+            Thread worker = new Thread(RecordLoop);
+            worker.IsBackground = true;
+            worker.Name = "ScreenCaptureMediaFoundation";
+            worker.Priority = ThreadPriority.AboveNormal;
+            lock (recordingLock)
+                recordingThread = worker;
             try
             {
-                recordingThread.Start();
+                worker.Start();
             }
             catch
             {
