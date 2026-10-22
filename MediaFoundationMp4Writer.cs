@@ -75,17 +75,24 @@ namespace RScreenRec
 
         public void Dispose()
         {
-            FinalizeWriter();
-            if (mediaFoundationStarted)
+            try
             {
-                try { MFShutdown(); } catch { }
-                mediaFoundationStarted = false;
+                FinalizeWriter();
             }
-
-            if (comInitialized)
+            finally
             {
-                CoUninitialize();
-                comInitialized = false;
+                // Release Media Foundation and COM even when MP4 finalization fails.
+                if (mediaFoundationStarted)
+                {
+                    try { MFShutdown(); } catch { }
+                    mediaFoundationStarted = false;
+                }
+
+                if (comInitialized)
+                {
+                    CoUninitialize();
+                    comInitialized = false;
+                }
             }
         }
 
