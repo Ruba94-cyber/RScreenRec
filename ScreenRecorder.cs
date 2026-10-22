@@ -22,6 +22,7 @@ namespace RScreenRec
         private Stopwatch recordingStopwatch;
         private ManualResetEventSlim firstFrameWritten;
         private Rectangle bounds;
+        private IntPtr targetWindow;
         private byte[] frameBuffer;
         private bool isRecording;
         private string outputPath;
@@ -33,6 +34,17 @@ namespace RScreenRec
         private Exception recordingError;
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
+        {
+            StartRecordingCore(screenBounds, outputPath, IntPtr.Zero);
+        }
+
+        public void StartWindowRecording(IntPtr window, string outputPath)
+        {
+            using (var source = new PrintWindowFrameSource(window))
+                StartRecordingCore(new Rectangle(Point.Empty, source.FrameSize), outputPath, window);
+        }
+
+        private void StartRecordingCore(Rectangle screenBounds, string outputPath, IntPtr window)
         {
             if (screenBounds.Width <= 0 || screenBounds.Height <= 0)
                 throw new ArgumentException("Screen bounds must have a positive size.", "screenBounds");
@@ -48,6 +60,7 @@ namespace RScreenRec
                     throw new InvalidOperationException("A recording session is already in progress or has not been finalized.");
 
                 bounds = screenBounds;
+                targetWindow = window;
                 this.outputPath = outputPath;
                 encodedWidth = MakeH264CompatibleDimension(screenBounds.Width);
                 encodedHeight = MakeH264CompatibleDimension(screenBounds.Height);
@@ -189,6 +202,7 @@ namespace RScreenRec
             string path;
             int outputWidth;
             int outputHeight;
+            IntPtr window;
 
             lock (recordingLock)
             {
@@ -197,6 +211,7 @@ namespace RScreenRec
                 path = outputPath;
                 outputWidth = encodedWidth;
                 outputHeight = encodedHeight;
+                window = targetWindow;
             }
 
             if (stopwatch == null)
@@ -209,7 +224,9 @@ namespace RScreenRec
 
             try
             {
-                using (IFrameSource source = new DesktopFrameSource(captureBounds))
+                using (IFrameSource source = window == IntPtr.Zero
+                    ? (IFrameSource)new DesktopFrameSource(captureBounds)
+                    : new PrintWindowFrameSource(window))
                 using (var writer = new MediaFoundationMp4Writer(path, outputWidth, outputHeight, FramesPerSecond, SelectBitrate(outputWidth, outputHeight)))
                 using (Bitmap bitmap = new Bitmap(source.FrameSize.Width, source.FrameSize.Height, PixelFormat.Format32bppArgb))
                 using (Graphics graphics = Graphics.FromImage(bitmap))
@@ -221,8 +238,11 @@ namespace RScreenRec
                             break;
 
                         source.CaptureFrame(graphics);
-                        DrawMousePointer(graphics, captureBounds, dpiScale);
-                        DrawTouchPointers(graphics, captureBounds, dpiScale);
+                        if (window == IntPtr.Zero)
+                        {
+                            DrawMousePointer(graphics, captureBounds, dpiScale);
+                            DrawTouchPointers(graphics, captureBounds, dpiScale);
+                        }
 
                         byte[] frame = BitmapToRgb32TopDownPadded(bitmap, outputWidth, outputHeight);
                         WriteFrame(writer, frame, frame.Length, frameIndex, ref firstFrameSignaled);
