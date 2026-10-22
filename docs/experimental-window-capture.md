@@ -22,7 +22,9 @@ as a fallback, and does not create monitor-wide touch/REC overlays.
   stale, or incomplete frames even if PrintWindow reports success.
 - A minimized window stops recording rather than claiming to produce live frames.
 - The output resolution is fixed at the size selected at startup. Resizing the
-  target may crop or leave unused areas; dynamic resizing is not implemented.
+  target is handled by fitting its current image inside the original video size,
+  preserving aspect ratio and adding black bars when necessary. Very large
+  windows are rejected to bound temporary memory use.
 - Cursor and touch annotations are disabled for window-only capture to avoid
   incorrect coordinates and overlay contamination.
 - PrintWindow can block while the target window renders. Stop may take longer
