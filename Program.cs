@@ -10,6 +10,10 @@ namespace RScreenRec
 {
     static class Program
     {
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+        private const int VK_SHIFT = 0x10;
+
         private const string InstanceMutexName = @"Global\RScreenRec_SingleInstance";
         private const string StopEventName = @"Global\RScreenRec_StopEvent";
         private static readonly string StopRequestPath = Path.Combine(Path.GetTempPath(), "RScreenRec.stop");
@@ -36,6 +40,7 @@ namespace RScreenRec
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            bool windowSelectionRequested = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
             bool isFirstInstance;
             using (var mutex = new Mutex(true, InstanceMutexName, out isFirstInstance))
             {
@@ -54,6 +59,16 @@ namespace RScreenRec
                 {
                     stopEvent.Reset();
                     TryDeleteStopRequest();
+
+                    // Keep normal launch behavior unchanged. Window mode is opt-in.
+                    // Selection is intentionally not started until a dedicated capture
+                    // backend is available; falling back silently would record the desktop.
+                    if (windowSelectionRequested)
+                    {
+                        Logger.Log("Window capture requested with Shift, but the capture backend is not yet available.");
+                        MessageBox.Show("Window capture is not available in this build. Start without Shift to record the screen.", "RScreenRec", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
 
                     // Get the monitor under the cursor
                     Screen activeScreen = Screen.FromPoint(Cursor.Position);
