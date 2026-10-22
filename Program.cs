@@ -14,9 +14,9 @@ namespace RScreenRec
         private static extern short GetAsyncKeyState(int vKey);
         private const int VK_SHIFT = 0x10;
 
-        private const string InstanceMutexName = @"Global\RScreenRec_SingleInstance";
-        private const string StopEventName = @"Global\RScreenRec_StopEvent";
-        private static readonly string StopRequestPath = Path.Combine(Path.GetTempPath(), "RScreenRec.stop");
+        private const string InstanceMutexName = @"Local\RScreenRec_SingleInstance";
+        private const string StopEventName = @"Local\RScreenRec_StopEvent";
+        private static readonly string StopRequestPath = Path.Combine(Path.GetTempPath(), "RScreenRec_" + Environment.UserName + "_" + Process.GetCurrentProcess().SessionId + ".stop");
 
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
@@ -205,16 +205,16 @@ namespace RScreenRec
 
             try
             {
-                SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                int result = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                if (result >= 0)
+                    return;
             }
-            catch
-            {
-                try
-                {
-                    SetProcessDPIAware();
-                }
-                catch { }
-            }
+            catch (EntryPointNotFoundException) { }
+            catch (DllNotFoundException) { }
+
+            try { SetProcessDPIAware(); }
+            catch (EntryPointNotFoundException) { }
+            catch (DllNotFoundException) { }
         }
 
         private static bool HasOtherRunningInstance()
