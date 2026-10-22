@@ -87,6 +87,16 @@ namespace RScreenRec
             cleanupTimer.Start();
         }
 
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                cleanupTimer.Stop();
+                cleanupTimer.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_TOUCH)
