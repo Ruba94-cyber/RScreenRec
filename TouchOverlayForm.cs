@@ -108,7 +108,8 @@ namespace RScreenRec
                             pt.Y = Math.Max(0, Math.Min(ClientSize.Height, pt.Y));
 
                             touchPoints.Add(pt);
-                            AddActiveTouchPoint(pt);
+                            // Recording consumes absolute desktop coordinates, not overlay client coordinates.
+                            AddActiveTouchPoint(screenPoint);
                         }
                     }
                 }
