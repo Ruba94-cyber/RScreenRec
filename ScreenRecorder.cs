@@ -116,7 +116,10 @@ namespace RScreenRec
 
             if (captureThread != null && captureThread.IsAlive && !captureThread.Join(90000))
             {
-                Logger.Log("Capture thread did not finalize within timeout.");
+                Logger.Log("Capture thread did not finalize within timeout; keeping its resources alive.");
+                // The capture worker may still access frameBuffer and firstFrameWritten.
+                // Do not dispose or clear them while the worker is running.
+                throw new TimeoutException("Capture thread did not stop within 90 seconds.");
             }
 
             Exception error;
