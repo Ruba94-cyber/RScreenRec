@@ -29,12 +29,15 @@ $success = $false
 try {
     Copy-Item -LiteralPath $runtimeExe -Destination (Join-Path $testRoot 'RScreenRec.exe')
     $windowHarness = Join-Path $testRoot 'WindowCaptureSmoke.exe'
+    $executableWindowHarness = Join-Path $testRoot 'ExecutableWindowCaptureSmoke.exe'
     $longHarness = Join-Path $testRoot 'LongDurationWriterSmoke.exe'
     $targetHarness = Join-Path $testRoot 'SyntheticCaptureTarget.exe'
     & $compiler /nologo /target:winexe "/out:$targetHarness" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\SyntheticCaptureTarget.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the synthetic window target.' }
     & $compiler /nologo /target:exe "/out:$windowHarness" "/reference:$(Join-Path $testRoot 'RScreenRec.exe')" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\WindowCaptureSmoke.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the selected-window smoke harness.' }
+    & $compiler /nologo /target:exe "/out:$executableWindowHarness" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $root 'tests\ExecutableWindowCaptureSmoke.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not compile the actual-executable window-capture harness.' }
     & $compiler /nologo /target:exe "/out:$longHarness" "/reference:$(Join-Path $testRoot 'RScreenRec.exe')" (Join-Path $root 'tests\LongDurationWriterSmoke.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile the long-duration writer harness.' }
 
@@ -130,6 +133,73 @@ try {
         DurationSeconds = [double]$closedStream.duration
         FullDecode = 'ok'
         OcclusionAndRestore = 'not-applicable'
+    }
+
+    $executableOutput = Join-Path $testRoot 'actual-executable-output'
+    New-Item -ItemType Directory -Path $executableOutput | Out-Null
+    $executableOutputText = & $executableWindowHarness (Join-Path $testRoot 'RScreenRec.exe') $executableOutput 671 377 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Actual RScreenRec executable Shift/window capture failed: $($executableOutputText -join ' ')" }
+    if (-not ($executableOutputText -join ' ').Contains('shift_picker=seen_with_shift_held') -or
+        -not ($executableOutputText -join ' ').Contains('occlusion_and_resume=ok')) {
+        throw "Actual-executable Shift/occlusion evidence was incomplete: $($executableOutputText -join ' ')"
+    }
+    $executableVideo = Get-ChildItem -LiteralPath $executableOutput -Filter 'rec_*.mp4' -File | Select-Object -First 1
+    if (-not $executableVideo) { throw 'The actual executable did not produce an MP4 in the isolated smoke folder.' }
+    $executableJson = & $ffprobe.Source -v error -select_streams v:0 -show_entries 'stream=codec_name,width,height,avg_frame_rate,nb_frames,duration:format=size' -of json $executableVideo.FullName
+    if ($LASTEXITCODE -ne 0) { throw 'ffprobe failed for the actual-executable window recording.' }
+    $executableProbe = ($executableJson -join [Environment]::NewLine) | ConvertFrom-Json
+    $executableStream = $executableProbe.streams | Select-Object -First 1
+    if ($executableStream.codec_name -ne 'h264' -or $executableStream.width -ne 672 -or $executableStream.height -ne 378 -or
+        $executableStream.avg_frame_rate -ne '30/1' -or [int64]$executableStream.nb_frames -lt 150 -or [double]$executableStream.duration -lt 6) {
+        throw "Unexpected actual-executable stream metadata: $($executableStream | ConvertTo-Json -Compress)"
+    }
+    & $ffmpeg.Source -v error -xerror -i $executableVideo.FullName -f null NUL
+    if ($LASTEXITCODE -ne 0) { throw 'The actual-executable window recording did not fully decode.' }
+
+    $actualOccludedFrame = Join-Path $testRoot 'actual-executable-occluded.png'
+    $actualBaselineFrame = Join-Path $testRoot 'actual-executable-baseline.png'
+    $actualRestoredFrame = Join-Path $testRoot 'actual-executable-restored.png'
+    & $ffmpeg.Source -v error -ss 1.5 -i $executableVideo.FullName -frames:v 1 -update 1 -y $actualOccludedFrame
+    if ($LASTEXITCODE -ne 0) { throw 'Could not extract the actual-executable occlusion frame.' }
+    & $ffmpeg.Source -v error -ss 0.5 -i $executableVideo.FullName -frames:v 1 -update 1 -y $actualBaselineFrame
+    if ($LASTEXITCODE -ne 0) { throw 'Could not extract the actual-executable baseline frame.' }
+    & $ffmpeg.Source -v error -ss 5.0 -i $executableVideo.FullName -frames:v 1 -update 1 -y $actualRestoredFrame
+    if ($LASTEXITCODE -ne 0) { throw 'Could not extract the actual-executable restored frame.' }
+    $occludedBitmap = [System.Drawing.Bitmap]::FromFile($actualOccludedFrame)
+    $baselineBitmap = [System.Drawing.Bitmap]::FromFile($actualBaselineFrame)
+    $restoredBitmap = [System.Drawing.Bitmap]::FromFile($actualRestoredFrame)
+    try {
+        $magentaPixels = 0
+        for ($y = 0; $y -lt $occludedBitmap.Height; $y += 2) {
+            for ($x = 0; $x -lt $occludedBitmap.Width; $x += 2) {
+                $pixel = $occludedBitmap.GetPixel($x, $y)
+                if ($pixel.R -gt 240 -and $pixel.G -lt 15 -and $pixel.B -gt 240) { $magentaPixels++ }
+            }
+        }
+        $sampledPixels = [Math]::Ceiling($occludedBitmap.Width / 2.0) * [Math]::Ceiling($occludedBitmap.Height / 2.0)
+        if ($magentaPixels -gt ($sampledPixels * 0.01)) {
+            throw "The covering magenta window appeared in the actual-executable recording ($magentaPixels/$sampledPixels sampled pixels)."
+        }
+        $before = $baselineBitmap.GetPixel([int]($baselineBitmap.Width / 2), [int]($baselineBitmap.Height / 2))
+        $after = $restoredBitmap.GetPixel([int]($restoredBitmap.Width / 2), [int]($restoredBitmap.Height / 2))
+        $pixelChange = [Math]::Abs($before.R - $after.R) + [Math]::Abs($before.G - $after.G) + [Math]::Abs($before.B - $after.B)
+        if ($pixelChange -lt 24) { throw 'The selected window did not resume changing after occlusion and restore in the actual-executable recording.' }
+    }
+    finally {
+        $occludedBitmap.Dispose()
+        $baselineBitmap.Dispose()
+        $restoredBitmap.Dispose()
+    }
+    $results += [pscustomobject]@{
+        Test = 'actual-executable-shift-window-occlusion'
+        Backend = 'Windows Graphics Capture (no compatibility warning)'
+        SizeBytes = [int64]$executableProbe.format.size
+        Encoded = "$($executableStream.width)x$($executableStream.height)"
+        FPS = $executableStream.avg_frame_rate
+        Frames = [int64]$executableStream.nb_frames
+        DurationSeconds = [double]$executableStream.duration
+        FullDecode = 'ok'
+        OcclusionAndRestore = 'ok; no magenta cover in stream'
     }
 
     $longVideo = Join-Path $testRoot 'over-one-hour.mp4'
