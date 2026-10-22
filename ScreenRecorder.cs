@@ -116,7 +116,19 @@ namespace RScreenRec
                 throw new InvalidOperationException("Recording stopped before its first frame.");
             }
             if (!firstFrameReady)
-                Logger.Log("First frame not ready after 3 seconds; capture continues.");
+            {
+                // Do not claim a successful start when the encoder has not
+                // accepted a frame. Shut down and surface the failure.
+                try
+                {
+                    StopRecording();
+                }
+                catch (Exception ex)
+                {
+                    throw new TimeoutException("The recorder could not write its first frame within 3 seconds.", ex);
+                }
+                throw new TimeoutException("The recorder could not write its first frame within 3 seconds.");
+            }
             else if (!IsRecording)
             {
                 // The first frame may have been written just before an error.
