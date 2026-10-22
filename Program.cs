@@ -63,13 +63,6 @@ namespace RScreenRec
                     IntPtr selectedWindow = IntPtr.Zero;
                     if (windowSelectionRequested)
                     {
-                        DialogResult choice = MessageBox.Show(
-                            "Experimental window capture uses PrintWindow, not Windows Graphics Capture. " +
-                            "Some apps may render black or incomplete frames; minimizing holds the last frame until restored. " +
-                            "Other windows are never used as a fallback. Continue?",
-                            "RScreenRec - Experimental window capture",
-                            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                        if (choice != DialogResult.Yes) return;
                         selectedWindow = WindowPicker.SelectWindow();
                         if (selectedWindow == IntPtr.Zero) return;
                     }
@@ -78,7 +71,10 @@ namespace RScreenRec
                     Screen activeScreen = Screen.FromPoint(Cursor.Position);
                     Rectangle bounds = activeScreen.Bounds;
 
-                    string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Captures");
+                    string benchmarkFolder = Environment.GetEnvironmentVariable("RSCREENREC_BENCHMARK_OUTPUT_DIRECTORY");
+                    string folder = string.IsNullOrWhiteSpace(benchmarkFolder)
+                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Captures")
+                        : Path.GetFullPath(benchmarkFolder);
                     try
                     {
                         Directory.CreateDirectory(folder);
@@ -100,6 +96,17 @@ namespace RScreenRec
                             recorder.StartRecording(bounds, outputPath);
                         else
                             recorder.StartWindowRecording(selectedWindow, outputPath);
+                        if (selectedWindow != IntPtr.Zero &&
+                            recorder.WindowCaptureBackend != "Windows Graphics Capture")
+                        {
+                            MessageBox.Show(
+                                "Windows Graphics Capture is unavailable for this window or system. " +
+                                "RScreenRec is using PrintWindow compatibility capture; some GPU-rendered windows may be blank or incomplete. " +
+                                "A minimized window holds its last captured frame. Other desktop content is never used as a fallback.",
+                                "RScreenRec - Compatibility capture",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                        }
                         Logger.Log(string.Format("Startup ready in {0} ms. Output={1}",
                             startupStopwatch.ElapsedMilliseconds,
                             outputPath));

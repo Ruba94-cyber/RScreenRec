@@ -13,16 +13,15 @@ namespace RScreenRec
     {
         private const int FramesPerSecond = 30;
         private const int MaxCatchUpFramesPerCycle = FramesPerSecond * 2;
-        private const int LowResolutionBitrate = 250000;
-        private const int FullHdBitrate = 400000;
-        private const int QuadHdBitrate = 900000;
-        private const int UltraHdBitrate = 2200000;
+        private const int ScreenRecordingQuality = 35;
         private readonly object recordingLock = new object();
         private Thread recordingThread;
         private Stopwatch recordingStopwatch;
         private ManualResetEventSlim firstFrameWritten;
         private Rectangle bounds;
         private IntPtr targetWindow;
+        private IFrameSource initialWindowSource;
+        private string windowCaptureBackend;
         private byte[] frameBuffer;
         private bool isRecording;
         private string outputPath;
@@ -31,20 +30,45 @@ namespace RScreenRec
         private int encodedPaddingRight;
         private int encodedPaddingBottom;
         private int framesWritten;
+        private int updatedSourceFrames;
+        private int repeatedSourceFrames;
         private Exception recordingError;
 
         public void StartRecording(Rectangle screenBounds, string outputPath)
         {
-            StartRecordingCore(screenBounds, outputPath, IntPtr.Zero);
+            StartRecordingCore(screenBounds, outputPath, IntPtr.Zero, null, "Desktop");
         }
 
         public void StartWindowRecording(IntPtr window, string outputPath)
         {
-            using (var source = new PrintWindowFrameSource(window))
-                StartRecordingCore(new Rectangle(Point.Empty, source.FrameSize), outputPath, window);
+            string backend;
+            IFrameSource source = WindowFrameSourceFactory.Create(window, out backend);
+            try
+            {
+                StartRecordingCore(new Rectangle(Point.Empty, source.FrameSize), outputPath, window, source, backend);
+            }
+            catch
+            {
+                bool workerOwnsSource;
+                lock (recordingLock)
+                    workerOwnsSource = recordingThread != null;
+                if (!workerOwnsSource)
+                    source.Dispose();
+                throw;
+            }
         }
 
-        private void StartRecordingCore(Rectangle screenBounds, string outputPath, IntPtr window)
+        public string WindowCaptureBackend
+        {
+            get
+            {
+                lock (recordingLock)
+                    return windowCaptureBackend;
+            }
+        }
+
+        private void StartRecordingCore(Rectangle screenBounds, string outputPath, IntPtr window,
+            IFrameSource windowSource, string captureBackend)
         {
             if (screenBounds.Width <= 0 || screenBounds.Height <= 0)
                 throw new ArgumentException("Screen bounds must have a positive size.", "screenBounds");
@@ -61,6 +85,8 @@ namespace RScreenRec
 
                 bounds = screenBounds;
                 targetWindow = window;
+                initialWindowSource = windowSource;
+                windowCaptureBackend = captureBackend;
                 this.outputPath = outputPath;
                 encodedWidth = MakeH264CompatibleDimension(screenBounds.Width);
                 encodedHeight = MakeH264CompatibleDimension(screenBounds.Height);
@@ -69,6 +95,8 @@ namespace RScreenRec
                 frameBuffer = new byte[GetFrameBufferSize(encodedWidth, encodedHeight)];
                 firstFrameWritten = new ManualResetEventSlim(false);
                 framesWritten = 0;
+                updatedSourceFrames = 0;
+                repeatedSourceFrames = 0;
                 recordingError = null;
                 recordingStopwatch = Stopwatch.StartNew();
                 isRecording = true;
@@ -91,6 +119,7 @@ namespace RScreenRec
                     isRecording = false;
                     recordingThread = null;
                     recordingStopwatch = null;
+                    initialWindowSource = null;
                     frameBuffer = null;
                     firstFrameWritten.Dispose();
                     firstFrameWritten = null;
@@ -137,8 +166,7 @@ namespace RScreenRec
                 throw new InvalidOperationException("Recording stopped during startup.");
             }
 
-            int selectedBitrate = SelectBitrate(encodedWidth, encodedHeight);
-            Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, Bitrate={11}, TargetMBPerMinute={12:F1}",
+            Logger.Log(string.Format("Recording dispatched in {0} ms. Output={1}, CaptureBounds={2}x{3}@({4},{5}), EncodedSize={6}x{7}, PaddingRight={8}, PaddingBottom={9}, FPS={10}, H264Quality={11}, Backend={12}",
                 startupStopwatch.ElapsedMilliseconds,
                 outputPath,
                 screenBounds.Width,
@@ -150,8 +178,8 @@ namespace RScreenRec
                 encodedPaddingRight,
                 encodedPaddingBottom,
                 FramesPerSecond,
-                selectedBitrate,
-                EstimateMegabytesPerMinute(selectedBitrate)));
+                ScreenRecordingQuality,
+                captureBackend));
         }
 
         public void StopRecording()
@@ -184,13 +212,20 @@ namespace RScreenRec
 
             Exception error;
             int written;
+            int updated;
+            int repeated;
+            string backend;
             lock (recordingLock)
             {
                 error = recordingError;
                 written = framesWritten;
+                updated = updatedSourceFrames;
+                repeated = repeatedSourceFrames;
+                backend = windowCaptureBackend;
                 recordingThread = null;
                 recordingStopwatch = null;
                 firstFrameWritten = null;
+                initialWindowSource = null;
                 frameBuffer = null;
             }
 
@@ -198,8 +233,8 @@ namespace RScreenRec
                 firstFrameEvent.Dispose();
 
             long size = !string.IsNullOrEmpty(path) && File.Exists(path) ? new FileInfo(path).Length : 0;
-            Logger.Log(string.Format("Recording stopped. RequestedDuration={0}, Frames={1}, Size={2}, Output={3}",
-                requestedDuration, written, size, path));
+            Logger.Log(string.Format("Recording stopped. RequestedDuration={0}, Frames={1}, SourceFramesUpdated={2}, SourceFramesRepeated={3}, Backend={4}, Size={5}, Output={6}",
+                requestedDuration, written, updated, repeated, backend, size, path));
 
             if (error != null)
                 throw new InvalidOperationException("Recording failed while finalizing.", error);
@@ -224,6 +259,7 @@ namespace RScreenRec
             int outputWidth;
             int outputHeight;
             IntPtr window;
+            IFrameSource suppliedWindowSource;
 
             lock (recordingLock)
             {
@@ -233,6 +269,8 @@ namespace RScreenRec
                 outputWidth = encodedWidth;
                 outputHeight = encodedHeight;
                 window = targetWindow;
+                suppliedWindowSource = initialWindowSource;
+                initialWindowSource = null;
             }
 
             if (stopwatch == null)
@@ -242,13 +280,18 @@ namespace RScreenRec
             long frameIndex = 0;
             float dpiScale = DpiHelper.GetSystemDpiScale();
             bool firstFrameSignaled = false;
+            Exception frameSourceFailure = null;
 
             try
             {
-                using (IFrameSource source = window == IntPtr.Zero
+                IFrameSource selectedSource = window == IntPtr.Zero
                     ? (IFrameSource)new DesktopFrameSource(captureBounds)
-                    : new PrintWindowFrameSource(window))
-                using (var writer = new MediaFoundationMp4Writer(path, outputWidth, outputHeight, FramesPerSecond, SelectBitrate(outputWidth, outputHeight)))
+                    : suppliedWindowSource;
+                if (selectedSource == null)
+                    throw new InvalidOperationException("The selected window capture source was not initialized.");
+
+                using (IFrameSource source = selectedSource)
+                using (var writer = new MediaFoundationMp4Writer(path, outputWidth, outputHeight, FramesPerSecond, ScreenRecordingQuality))
                 using (Bitmap bitmap = new Bitmap(source.FrameSize.Width, source.FrameSize.Height, PixelFormat.Format32bppArgb))
                 using (Graphics graphics = Graphics.FromImage(bitmap))
                 {
@@ -258,7 +301,21 @@ namespace RScreenRec
                         if (!IsRecording)
                             break;
 
-                        source.CaptureFrame(graphics);
+                        FrameCaptureStatus captureStatus;
+                        try
+                        {
+                            captureStatus = source.CaptureFrame(graphics);
+                        }
+                        catch (Exception ex)
+                        {
+                            frameSourceFailure = ex;
+                            Logger.Log("Frame source capture failed.", ex);
+                            throw;
+                        }
+                        if (captureStatus == FrameCaptureStatus.Updated)
+                            Interlocked.Increment(ref updatedSourceFrames);
+                        else
+                            Interlocked.Increment(ref repeatedSourceFrames);
                         if (window == IntPtr.Zero)
                         {
                             DrawMousePointer(graphics, captureBounds, dpiScale);
@@ -287,12 +344,15 @@ namespace RScreenRec
             }
             catch (Exception ex)
             {
+                Exception reportedError = frameSourceFailure ?? ex;
                 lock (recordingLock)
                 {
-                    recordingError = ex;
+                    recordingError = reportedError;
                     isRecording = false;
                 }
-                Logger.Log("Capture loop stopped by error.", ex);
+                if (frameSourceFailure != null && !ReferenceEquals(ex, frameSourceFailure))
+                    Logger.Log("MP4 finalization also failed after the frame source error.", ex);
+                Logger.Log("Capture loop stopped by error.", reportedError);
             }
             finally
             {
@@ -440,22 +500,5 @@ namespace RScreenRec
             return (int)bytes;
         }
 
-        private static int SelectBitrate(int width, int height)
-        {
-            long pixels = width * (long)height;
-            if (pixels >= 3840L * 2160L)
-                return UltraHdBitrate;
-            if (pixels >= 2560L * 1440L)
-                return QuadHdBitrate;
-            if (pixels >= 1280L * 720L)
-                return FullHdBitrate;
-
-            return LowResolutionBitrate;
-        }
-
-        private static double EstimateMegabytesPerMinute(int bitrate)
-        {
-            return bitrate * 60.0 / 8.0 / 1024.0 / 1024.0;
-        }
     }
 }
