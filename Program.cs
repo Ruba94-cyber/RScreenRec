@@ -326,6 +326,7 @@ namespace RScreenRec
                     form = formFactory();
                     if (closeRequested)
                     {
+                        form.Dispose();
                         ready.Set();
                         return;
                     }
