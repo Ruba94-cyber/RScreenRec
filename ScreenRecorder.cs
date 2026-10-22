@@ -95,8 +95,10 @@ namespace RScreenRec
                     startupError = recordingError;
                 if (startupError != null || !IsRecording)
                 {
+                    // StopRecording joins the worker and may itself report the original
+                    // encoder failure. Preserve that exception rather than masking it.
                     StopRecording();
-                    throw new InvalidOperationException("Recording could not start.", startupError);
+                    throw new InvalidOperationException("Recording stopped before its first frame.");
                 }
                 Logger.Log("First frame not ready after 3 seconds; capture continues.");
             }
