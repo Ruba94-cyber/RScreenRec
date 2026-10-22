@@ -1,10 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'release-candidates')
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $OutputDirectory = Join-Path $root 'release-candidates'
+}
 & (Join-Path $PSScriptRoot 'build-check.ps1')
 if ($LASTEXITCODE -ne 0) { throw "Release x64 build check failed (exit $LASTEXITCODE)." }
 

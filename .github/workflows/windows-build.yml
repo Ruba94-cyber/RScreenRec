@@ -24,12 +24,11 @@ jobs:
       - name: Build and package Release x64 candidate
         shell: pwsh
         run: |
-          $output = Join-Path $env:RUNNER_TEMP 'RScreenRec-release-candidates'
-          & .\scripts\Package-ReleaseCandidate.ps1 -OutputDirectory $output
+          & .\scripts\Package-ReleaseCandidate.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: RScreenRec-1.2.0-rc.1-windows-x64
-          path: ${{ runner.temp }}/RScreenRec-release-candidates/*
+          path: release-candidates/*
           if-no-files-found: error
           retention-days: 14
